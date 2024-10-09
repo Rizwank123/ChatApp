@@ -1,0 +1,225 @@
+basePath: /api/v1
+definitions:
+  BaseResponse:
+    properties:
+      data: {}
+    type: object
+  CreateUserInput:
+    properties:
+      password:
+        example: password123
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/github_com_chatApp_internal_domain.UserRole'
+        example: ADMIN
+      user_name:
+        example: "+919984778491"
+        type: string
+    type: object
+  ForbiddenAccessError:
+    properties:
+      code:
+        example: FORBIDDEN_ACCESS
+        type: string
+      message:
+        example: You are forbidden from accessing this resource
+        type: string
+    type: object
+  InvalidRequestError:
+    properties:
+      message:
+        example: invalid request
+        type: string
+    type: object
+  SystemError:
+    properties:
+      code:
+        example: INTERNAL_SERVER_ERROR
+        type: string
+      message:
+        example: Oops! Something went wrong. Please try again later
+        type: string
+    type: object
+  UnauthorizedError:
+    properties:
+      code:
+        example: UNAUTHORIZED
+        type: string
+      message:
+        example: You are not authorized to access this resource
+        type: string
+    type: object
+  User:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        example: ""
+        type: string
+      password:
+        type: string
+      role:
+        example: ADMIN
+        type: string
+      updated_at:
+        type: string
+      user_name:
+        example: "+919984778491"
+        type: string
+    type: object
+  github_com_chatApp_internal_domain.UserRole:
+    enum:
+    - ADMIN
+    - USER
+    type: string
+    x-enum-varnames:
+    - UserRoleAmin
+    - UserRoleUser
+host: localhost:8080
+info:
+  contact:
+    email: mohammad.developer@example.com
+    name: Mohammad Developer
+    url: https://example.com
+  description: Chat application's set of APIs
+  termsOfService: https://example.com/terms
+  title: Chat API
+  version: "1.0"
+paths:
+  /user:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user with the provided details
+      parameters:
+      - description: User registration details
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/CreateUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User registered successfully
+          schema:
+            $ref: '#/definitions/User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ForbiddenAccessError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      summary: Register a new user
+      tags:
+      - users
+  /user/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Find a user based on the provided ID
+      operationId: findUserByID
+      parameters:
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/User'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ForbiddenAccessError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
+      summary: Find a user by ID
+      tags:
+      - User
+  /user/{username}:
+    get:
+      consumes:
+      - application/json
+      description: Get user information by their username
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User details
+          schema:
+            $ref: '#/definitions/User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ForbiddenAccessError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      summary: Find a user by username
+      tags:
+      - users
+schemes:
+- http
+- https
+securityDefinitions:
+  JWT:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
