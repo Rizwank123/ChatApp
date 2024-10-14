@@ -70,7 +70,7 @@ require (
 	github.com/labstack/echo-jwt/v4 v4.2.0
 	github.com/leebenson/conform v1.2.2
 	github.com/spf13/viper v1.19.0
-	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/crypto v0.27.0
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
 )

@@ -1,11 +1,79 @@
 basePath: /api/v1
 definitions:
+  ActivationStatus:
+    enum:
+    - ACTIVE
+    - DISABLED
+    type: string
+    x-enum-varnames:
+    - ActivationStatusACTIVE
+    - ActivationStatusDISABLED
+  Address:
+    properties:
+      city:
+        example: Mumbai
+        type: string
+      coordinates:
+        $ref: '#/definitions/JSONB'
+      country:
+        example: India
+        type: string
+      pincode:
+        example: "123456"
+        type: string
+      state:
+        example: Maharashtra
+        type: string
+      street:
+        example: 123 Main St
+        type: string
+    type: object
   BaseResponse:
     properties:
       data: {}
     type: object
+  CreatePersonnelInput:
+    properties:
+      activation_status:
+        allOf:
+        - $ref: '#/definitions/ActivationStatus'
+        example: ACTIVATE
+      address:
+        $ref: '#/definitions/Address'
+      avatar:
+        example: https://example.com/avatar.jpg
+        type: string
+      email:
+        example: expertkhan@gmail.com
+        type: string
+      first_name:
+        example: Mohammad
+        type: string
+      gender:
+        example: MALE
+        type: string
+      last_name:
+        example: Rizwan
+        type: string
+      mobile:
+        example: "+919984778492"
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/github_com_chatApp_internal_domain.UserRole'
+        example: ADMIN
+      user_id:
+        example: 12345678-1234-1234
+        type: string
+    type: object
   CreateUserInput:
     properties:
+      first_name:
+        example: Mohammad
+        type: string
+      last_name:
+        example: Rizwan
+        type: string
       password:
         example: password123
         type: string
@@ -17,6 +85,84 @@ definitions:
         example: "+919984778491"
         type: string
     type: object
+  FilterFieldPredicate:
+    properties:
+      field:
+        description: Field represents a column for the entity you are filtering
+        example: name
+        type: string
+      operator:
+        allOf:
+        - $ref: '#/definitions/FilterOp'
+        description: Operator represents the filter operation you'd like to perform
+          on the field
+        enum:
+        - eq
+        - neq
+        - gt
+        - gte
+        - lt
+        - lte
+        - in
+        - nin
+        - like
+        - nlike
+        - ilike
+        - nilike
+        - isnull
+        - notnull
+        - between
+        example: eq
+      value:
+        description: Value represents the value you'd like to filter by
+    type: object
+  FilterInput:
+    properties:
+      fields:
+        description: Fields represents the fields you want to filter
+        items:
+          $ref: '#/definitions/FilterFieldPredicate'
+        type: array
+      sort_keys:
+        description: SortKeys represents the sort keys you want to sort by
+        items:
+          $ref: '#/definitions/SortKey'
+        type: array
+    type: object
+  FilterOp:
+    enum:
+    - eq
+    - neq
+    - gt
+    - gte
+    - lt
+    - lte
+    - in
+    - nin
+    - like
+    - nlike
+    - ilike
+    - nilike
+    - isnull
+    - notnull
+    - between
+    type: string
+    x-enum-varnames:
+    - FilterOpEq
+    - FilterOpNeq
+    - FilterOpGt
+    - FilterOpGte
+    - FilterOpLt
+    - FilterOpLte
+    - FilterOpIn
+    - FilterOpNin
+    - FilterOpLike
+    - FilterOpNlike
+    - FilterOpIlike
+    - FilterOpNilike
+    - FilterOpIsnull
+    - FilterOpNotnull
+    - FilterOpBetween
   ForbiddenAccessError:
     properties:
       code:
@@ -30,6 +176,78 @@ definitions:
     properties:
       message:
         example: invalid request
+        type: string
+    type: object
+  JSONB:
+    additionalProperties: true
+    type: object
+  LoginInput:
+    properties:
+      password:
+        type: string
+      user_name:
+        example: +919984778491 or example
+        type: string
+    type: object
+  LoginOutput:
+    properties:
+      expires_in:
+        type: integer
+      token:
+        type: string
+    type: object
+  Personnel:
+    properties:
+      activation_status:
+        allOf:
+        - $ref: '#/definitions/ActivationStatus'
+        example: ACTIVATE
+      address:
+        $ref: '#/definitions/Address'
+      avatar:
+        example: https://example.com/avatar.jpg
+        type: string
+      created_at:
+        example: 2022-02-16 15:35:10.535606+05:30
+        type: string
+      email:
+        example: expertkhan@gmail.com
+        type: string
+      first_name:
+        example: Mohammad
+        type: string
+      gender:
+        example: MALE
+        type: string
+      id:
+        example: ""
+        type: string
+      last_name:
+        example: Rizwan
+        type: string
+      mobile:
+        example: "+919984778492"
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/github_com_chatApp_internal_domain.UserRole'
+        example: ADMIN
+      updated_at:
+        example: 2022-02-16 15:35:10.535606+05:30
+        type: string
+      user_id:
+        example: 12345678-1234-1234-1234-123456789012
+        type: string
+    type: object
+  SortKey:
+    properties:
+      direction:
+        description: Direction represents the direction of the sort
+        example: asc
+        type: string
+      field:
+        description: Field represents a column for the entity you are sorting
+        example: name
         type: string
     type: object
   SystemError:
@@ -50,21 +268,47 @@ definitions:
         example: You are not authorized to access this resource
         type: string
     type: object
+  UpdatePersonnelInput:
+    properties:
+      activation_status:
+        allOf:
+        - $ref: '#/definitions/ActivationStatus'
+        example: ACTIVATE
+      address:
+        $ref: '#/definitions/Address'
+      avatar:
+        example: https://example.com/avatar.jpg
+        type: string
+      email:
+        example: expertkhan@gmail.com
+        type: string
+      first_name:
+        example: Mohammad
+        type: string
+      gender:
+        example: MALE
+        type: string
+      last_name:
+        example: Rizwan
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/github_com_chatApp_internal_domain.UserRole'
+        example: ADMIN
+    type: object
   User:
     properties:
       created_at:
-        type: string
-      deleted_at:
+        example: 2022-02-16 15:35:10.535606+05:30
         type: string
       id:
         example: ""
-        type: string
-      password:
         type: string
       role:
         example: ADMIN
         type: string
       updated_at:
+        example: 2022-02-16 15:35:10.535606+05:30
         type: string
       user_name:
         example: "+919984778491"
@@ -89,7 +333,246 @@ info:
   title: Chat API
   version: "1.0"
 paths:
-  /user:
+  /personnel:
+    post:
+      consumes:
+      - application/json
+      description: Create a new personnel record
+      operationId: createPersonnel
+      parameters:
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Personnel creation input
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/CreatePersonnelInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/Personnel'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
+      summary: Create new personnel
+      tags:
+      - Personnel
+  /personnel/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete personnel using the provided ID
+      operationId: deletePersonnel
+      parameters:
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Personnel ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
+      summary: Delete personnel
+      tags:
+      - Personnel
+    get:
+      consumes:
+      - application/json
+      description: Find personnel based on the provided ID
+      operationId: findPersonnelByID
+      parameters:
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Personnel ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/Personnel'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ForbiddenAccessError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
+      summary: Find personnel by ID
+      tags:
+      - Personnel
+    put:
+      consumes:
+      - application/json
+      description: Update personnel based on the provided ID and input
+      operationId: updatePersonnel
+      parameters:
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Personnel ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Personnel update input
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/UpdatePersonnelInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/Personnel'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ForbiddenAccessError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
+      summary: Update personnel
+      tags:
+      - Personnel
+  /personnel/filter:
+    post:
+      consumes:
+      - application/json
+      description: Filter personnel using provided criteria
+      operationId: filterPersonnel
+      parameters:
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Filter input
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/FilterInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/Personnel'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
+      summary: Filter personnel
+      tags:
+      - Personnel
+  /users:
     post:
       consumes:
       - application/json
@@ -105,9 +588,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: User registered successfully
+          description: OK
           schema:
-            $ref: '#/definitions/User'
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/User'
+              type: object
         "400":
           description: Bad Request
           schema:
@@ -126,8 +614,8 @@ paths:
             $ref: '#/definitions/SystemError'
       summary: Register a new user
       tags:
-      - users
-  /user/{id}:
+      - Auth
+  /users/{id}:
     get:
       consumes:
       - application/json
@@ -177,13 +665,18 @@ paths:
       summary: Find a user by ID
       tags:
       - User
-  /user/{username}:
+  /users/{username}:
     get:
       consumes:
       - application/json
       description: Get user information by their username
       parameters:
-      - description: Username
+      - description: 'Bearer '
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: username
         in: path
         name: username
         required: true
@@ -192,9 +685,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: User details
+          description: OK
           schema:
-            $ref: '#/definitions/User'
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/User'
+              type: object
         "400":
           description: Bad Request
           schema:
@@ -211,9 +709,51 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/SystemError'
+      security:
+      - JWT: []
       summary: Find a user by username
       tags:
-      - users
+      - User
+  /users/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user using provided credentials
+      operationId: userLogin
+      parameters:
+      - description: Login input
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/LoginOutput'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/UnauthorizedError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      summary: User login
+      tags:
+      - Auth
 schemes:
 - http
 - https

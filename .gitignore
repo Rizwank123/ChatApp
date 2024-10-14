@@ -7,3 +7,5 @@ package.json
 package-lock.json
 __debug_bin*
 .DS_Store
+CaddyFile
+

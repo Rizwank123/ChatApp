@@ -11,6 +11,8 @@ import (
 	"github.com/chatApp/internal/http/api"
 	"github.com/chatApp/internal/http/controller"
 	"github.com/chatApp/internal/pkg/config"
+	"github.com/chatApp/internal/pkg/security"
+	"github.com/chatApp/internal/pkg/util"
 	"github.com/chatApp/internal/repository"
 	"github.com/chatApp/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,9 +34,15 @@ func NewDatabaseConfig(cfg config.ChatApiConfig) (*pgxpool.Pool, error) {
 }
 
 func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*api.ChatApi, error) {
+	personnelRepository := repository.NewPersonnelRepository(db)
+	personnelService := service.NewPersonnelService(personnelRepository)
+	personnelController := controller.NewPersonnelController(personnelService)
+	appUtil := util.NewAppUtil()
+	manager := security.NewJwtSecurityManager(cfg)
+	transactioner := repository.NewTransactioner(db)
 	userRepository := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepository)
+	userService := service.NewUserService(appUtil, cfg, personnelRepository, manager, transactioner, userRepository)
 	userController := controller.NewUserController(userService)
-	chatApi := api.NewChatApi(cfg, userController)
+	chatApi := api.NewChatApi(cfg, personnelController, userController)
 	return chatApi, nil
 }

@@ -15,7 +15,7 @@ type (
 	User struct {
 		Base
 		UserName string  `db:"user_name" json:"user_name,omitempty" example:"+919984778491"`
-		Password *string `db:"password" json:"password,omitempty"`
+		Password *string `db:"password" json:"-"`
 		Role     string  `db:"role" json:"role,omitempty"  example:"ADMIN"`
 		BaseAudit
 	} // @name User
@@ -24,14 +24,26 @@ type (
 type (
 	// CreateUserInput define the module for CreateUser
 	RegisterUserInput struct {
-		UserName string   `json:"user_name" example:"+919984778491"`
-		Role     UserRole `json:"role" example:"ADMIN"`
-		Password *string  `json:"password" example:"password123"`
+		FirstName string   `json:"first_name" example:"Mohammad"`
+		LastName  string   `json:"last_name" example:"Rizwan"`
+		UserName  string   `json:"user_name" example:"+919984778491"`
+		Role      UserRole `json:"role" example:"ADMIN"`
+		Password  string   `json:"password" example:"password123"`
 	} // @name CreateUserInput
 	// UpdateUserInput define the module for the UpdateUserInput
 	UpdateUserInput struct {
 		RegisterUserInput
 	} // @name UpdateUserInput
+	// LoginInput  define the module for the LoginInput
+	LoginInput struct {
+		UserName string `json:"user_name" example:"+919984778491 or example"`
+		Password string `json:"password"`
+	} // @name LoginInput
+	// LoginOutput define the module for the LoginOutput
+	LoginOutput struct {
+		Token     string `json:"token"`
+		ExpiresIn int64  `json:"expires_in"`
+	} // @name LoginOutput
 )
 
 type (
@@ -61,6 +73,8 @@ type (
 		FindByID(id uuid.UUID) (result User, err error)
 		// FindByUserName return the user by username
 		FindByUserName(username string) (result User, err error)
+		// Login return the user by username and password
+		Login(in LoginInput) (result LoginOutput, err error)
 		// UpdateUser updates the user
 		UpdateUser(id uuid.UUID, in UpdateUserInput) (result User, err error)
 		// DeleteUser deletes the user

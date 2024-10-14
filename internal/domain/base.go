@@ -22,10 +22,19 @@ type (
 
 	// BaseAudit defines the model for base audit
 	BaseAudit struct {
-		CratedAt  time.Time `db:"created_at" json:"created_at,omitempty"`
-		UpdatedAt time.Time `db:"updated_at" json:"updated_at,omitempty"`
-		DeletedAt time.Time `db:"deleted_at" json:"deleted_at,omitempty"`
-	}
+		CreatedAt time.Time  `db:"created_at" json:"created_at,omitempty" example:"2022-02-16 15:35:10.535606+05:30"`
+		UpdatedAt time.Time  `db:"updated_at" json:"updated_at,omitempty" example:"2022-02-16 15:35:10.535606+05:30"`
+		DeletedAt *time.Time `db:"deleted_at" json:"-"`
+	} // @name BaseAudit
+	// Address defines model for Address.
+	Address struct {
+		Street      string `json:"street,omitempty" example:"123 Main St"`
+		Pincode     string `json:"pincode,omitempty" example:"123456"`
+		City        string `json:"city,omitempty" example:"Mumbai"`
+		State       string `json:"state,omitempty" example:"Maharashtra"`
+		Country     string `json:"country,omitempty" example:"India"`
+		Coordinates JSONB  `json:"coordinates" db:"coordinates"`
+	} // @name Address
 )
 
 type (

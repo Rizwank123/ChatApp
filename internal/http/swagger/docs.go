@@ -20,7 +20,391 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/user": {
+        "/personnel": {
+            "post": {
+                "security": [
+                    {
+                        "JWT": []
+                    }
+                ],
+                "description": "Create a new personnel record",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Personnel"
+                ],
+                "summary": "Create new personnel",
+                "operationId": "createPersonnel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer ",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Personnel creation input",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CreatePersonnelInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/Personnel"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/InvalidRequestError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/UnauthorizedError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SystemError"
+                        }
+                    }
+                }
+            }
+        },
+        "/personnel/filter": {
+            "post": {
+                "security": [
+                    {
+                        "JWT": []
+                    }
+                ],
+                "description": "Filter personnel using provided criteria",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Personnel"
+                ],
+                "summary": "Filter personnel",
+                "operationId": "filterPersonnel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer ",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Filter input",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/FilterInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/Personnel"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/InvalidRequestError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/UnauthorizedError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SystemError"
+                        }
+                    }
+                }
+            }
+        },
+        "/personnel/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "JWT": []
+                    }
+                ],
+                "description": "Find personnel based on the provided ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Personnel"
+                ],
+                "summary": "Find personnel by ID",
+                "operationId": "findPersonnelByID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer ",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Personnel ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/Personnel"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/InvalidRequestError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/UnauthorizedError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ForbiddenAccessError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SystemError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "JWT": []
+                    }
+                ],
+                "description": "Update personnel based on the provided ID and input",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Personnel"
+                ],
+                "summary": "Update personnel",
+                "operationId": "updatePersonnel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer ",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Personnel ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Personnel update input",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/UpdatePersonnelInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/Personnel"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/InvalidRequestError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/UnauthorizedError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/ForbiddenAccessError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SystemError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "JWT": []
+                    }
+                ],
+                "description": "Delete personnel using the provided ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Personnel"
+                ],
+                "summary": "Delete personnel",
+                "operationId": "deletePersonnel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer ",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Personnel ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/InvalidRequestError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/UnauthorizedError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SystemError"
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
             "post": {
                 "description": "Create a new user with the provided details",
                 "consumes": [
@@ -30,7 +414,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "users"
+                    "Auth"
                 ],
                 "summary": "Register a new user",
                 "parameters": [
@@ -46,9 +430,21 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "User registered successfully",
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/User"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/User"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -78,7 +474,72 @@ const docTemplate = `{
                 }
             }
         },
-        "/user/{id}": {
+        "/users/login": {
+            "post": {
+                "description": "Authenticate a user using provided credentials",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "User login",
+                "operationId": "userLogin",
+                "parameters": [
+                    {
+                        "description": "Login input",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/LoginInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/LoginOutput"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/InvalidRequestError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/UnauthorizedError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/SystemError"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}": {
             "get": {
                 "security": [
                     {
@@ -159,8 +620,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/user/{username}": {
+        "/users/{username}": {
             "get": {
+                "security": [
+                    {
+                        "JWT": []
+                    }
+                ],
                 "description": "Get user information by their username",
                 "consumes": [
                     "application/json"
@@ -169,13 +635,20 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "users"
+                    "User"
                 ],
                 "summary": "Find a user by username",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Username",
+                        "description": "Bearer ",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "username",
                         "name": "username",
                         "in": "path",
                         "required": true
@@ -183,9 +656,21 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "User details",
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/User"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/User"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -217,15 +702,114 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "ActivationStatus": {
+            "type": "string",
+            "enum": [
+                "ACTIVE",
+                "DISABLED"
+            ],
+            "x-enum-varnames": [
+                "ActivationStatusACTIVE",
+                "ActivationStatusDISABLED"
+            ]
+        },
+        "Address": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "example": "Mumbai"
+                },
+                "coordinates": {
+                    "$ref": "#/definitions/JSONB"
+                },
+                "country": {
+                    "type": "string",
+                    "example": "India"
+                },
+                "pincode": {
+                    "type": "string",
+                    "example": "123456"
+                },
+                "state": {
+                    "type": "string",
+                    "example": "Maharashtra"
+                },
+                "street": {
+                    "type": "string",
+                    "example": "123 Main St"
+                }
+            }
+        },
         "BaseResponse": {
             "type": "object",
             "properties": {
                 "data": {}
             }
         },
+        "CreatePersonnelInput": {
+            "type": "object",
+            "properties": {
+                "activation_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ActivationStatus"
+                        }
+                    ],
+                    "example": "ACTIVATE"
+                },
+                "address": {
+                    "$ref": "#/definitions/Address"
+                },
+                "avatar": {
+                    "type": "string",
+                    "example": "https://example.com/avatar.jpg"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "expertkhan@gmail.com"
+                },
+                "first_name": {
+                    "type": "string",
+                    "example": "Mohammad"
+                },
+                "gender": {
+                    "type": "string",
+                    "example": "MALE"
+                },
+                "last_name": {
+                    "type": "string",
+                    "example": "Rizwan"
+                },
+                "mobile": {
+                    "type": "string",
+                    "example": "+919984778492"
+                },
+                "role": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_chatApp_internal_domain.UserRole"
+                        }
+                    ],
+                    "example": "ADMIN"
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "12345678-1234-1234"
+                }
+            }
+        },
         "CreateUserInput": {
             "type": "object",
             "properties": {
+                "first_name": {
+                    "type": "string",
+                    "example": "Mohammad"
+                },
+                "last_name": {
+                    "type": "string",
+                    "example": "Rizwan"
+                },
                 "password": {
                     "type": "string",
                     "example": "password123"
@@ -243,6 +827,101 @@ const docTemplate = `{
                     "example": "+919984778491"
                 }
             }
+        },
+        "FilterFieldPredicate": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "description": "Field represents a column for the entity you are filtering",
+                    "type": "string",
+                    "example": "name"
+                },
+                "operator": {
+                    "description": "Operator represents the filter operation you'd like to perform on the field",
+                    "enum": [
+                        "eq",
+                        "neq",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "in",
+                        "nin",
+                        "like",
+                        "nlike",
+                        "ilike",
+                        "nilike",
+                        "isnull",
+                        "notnull",
+                        "between"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/FilterOp"
+                        }
+                    ],
+                    "example": "eq"
+                },
+                "value": {
+                    "description": "Value represents the value you'd like to filter by"
+                }
+            }
+        },
+        "FilterInput": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "description": "Fields represents the fields you want to filter",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/FilterFieldPredicate"
+                    }
+                },
+                "sort_keys": {
+                    "description": "SortKeys represents the sort keys you want to sort by",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/SortKey"
+                    }
+                }
+            }
+        },
+        "FilterOp": {
+            "type": "string",
+            "enum": [
+                "eq",
+                "neq",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "in",
+                "nin",
+                "like",
+                "nlike",
+                "ilike",
+                "nilike",
+                "isnull",
+                "notnull",
+                "between"
+            ],
+            "x-enum-varnames": [
+                "FilterOpEq",
+                "FilterOpNeq",
+                "FilterOpGt",
+                "FilterOpGte",
+                "FilterOpLt",
+                "FilterOpLte",
+                "FilterOpIn",
+                "FilterOpNin",
+                "FilterOpLike",
+                "FilterOpNlike",
+                "FilterOpIlike",
+                "FilterOpNilike",
+                "FilterOpIsnull",
+                "FilterOpNotnull",
+                "FilterOpBetween"
+            ]
         },
         "ForbiddenAccessError": {
             "type": "object",
@@ -263,6 +942,112 @@ const docTemplate = `{
                 "message": {
                     "type": "string",
                     "example": "invalid request"
+                }
+            }
+        },
+        "JSONB": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "LoginInput": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "user_name": {
+                    "type": "string",
+                    "example": "+919984778491 or example"
+                }
+            }
+        },
+        "LoginOutput": {
+            "type": "object",
+            "properties": {
+                "expires_in": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "Personnel": {
+            "type": "object",
+            "properties": {
+                "activation_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ActivationStatus"
+                        }
+                    ],
+                    "example": "ACTIVATE"
+                },
+                "address": {
+                    "$ref": "#/definitions/Address"
+                },
+                "avatar": {
+                    "type": "string",
+                    "example": "https://example.com/avatar.jpg"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2022-02-16 15:35:10.535606+05:30"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "expertkhan@gmail.com"
+                },
+                "first_name": {
+                    "type": "string",
+                    "example": "Mohammad"
+                },
+                "gender": {
+                    "type": "string",
+                    "example": "MALE"
+                },
+                "id": {
+                    "type": "string",
+                    "example": ""
+                },
+                "last_name": {
+                    "type": "string",
+                    "example": "Rizwan"
+                },
+                "mobile": {
+                    "type": "string",
+                    "example": "+919984778492"
+                },
+                "role": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_chatApp_internal_domain.UserRole"
+                        }
+                    ],
+                    "example": "ADMIN"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "example": "2022-02-16 15:35:10.535606+05:30"
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "12345678-1234-1234-1234-123456789012"
+                }
+            }
+        },
+        "SortKey": {
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "description": "Direction represents the direction of the sort",
+                    "type": "string",
+                    "example": "asc"
+                },
+                "field": {
+                    "description": "Field represents a column for the entity you are sorting",
+                    "type": "string",
+                    "example": "name"
                 }
             }
         },
@@ -292,28 +1077,68 @@ const docTemplate = `{
                 }
             }
         },
+        "UpdatePersonnelInput": {
+            "type": "object",
+            "properties": {
+                "activation_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ActivationStatus"
+                        }
+                    ],
+                    "example": "ACTIVATE"
+                },
+                "address": {
+                    "$ref": "#/definitions/Address"
+                },
+                "avatar": {
+                    "type": "string",
+                    "example": "https://example.com/avatar.jpg"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "expertkhan@gmail.com"
+                },
+                "first_name": {
+                    "type": "string",
+                    "example": "Mohammad"
+                },
+                "gender": {
+                    "type": "string",
+                    "example": "MALE"
+                },
+                "last_name": {
+                    "type": "string",
+                    "example": "Rizwan"
+                },
+                "role": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_chatApp_internal_domain.UserRole"
+                        }
+                    ],
+                    "example": "ADMIN"
+                }
+            }
+        },
         "User": {
             "type": "object",
             "properties": {
                 "created_at": {
-                    "type": "string"
-                },
-                "deleted_at": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "2022-02-16 15:35:10.535606+05:30"
                 },
                 "id": {
                     "type": "string",
                     "example": ""
-                },
-                "password": {
-                    "type": "string"
                 },
                 "role": {
                     "type": "string",
                     "example": "ADMIN"
                 },
                 "updated_at": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "2022-02-16 15:35:10.535606+05:30"
                 },
                 "user_name": {
                     "type": "string",

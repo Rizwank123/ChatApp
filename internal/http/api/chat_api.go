@@ -9,8 +9,9 @@ import (
 )
 
 type ChatApi struct {
-	cfg            config.ChatApiConfig
-	UserController controller.UserController
+	cfg                 config.ChatApiConfig
+	UserController      controller.UserController
+	PersonnelController controller.PersonnelController
 }
 
 // NewChatApi creates a new ChatApi instance
@@ -28,10 +29,11 @@ type ChatApi struct {
 //	@securityDefinitions.apiKey	JWT
 //	@in							header
 //	@name						Authorization
-func NewChatApi(cfg config.ChatApiConfig, uc controller.UserController) *ChatApi {
+func NewChatApi(cfg config.ChatApiConfig, pr controller.PersonnelController, uc controller.UserController) *ChatApi {
 	return &ChatApi{
-		cfg:            cfg,
-		UserController: uc,
+		cfg:                 cfg,
+		UserController:      uc,
+		PersonnelController: pr,
 	}
 }
 
@@ -40,10 +42,19 @@ func (b ChatApi) SetupRoutes(e *echo.Echo) {
 
 	auth := echojwt.JWT([]byte(b.cfg.AuthSecret))
 
-	userApi := apiV1.Group("/user")
-	userApi.POST("/", b.UserController.RegisterUser)
-	//user.POST("/login", b.UserController.LoginUser)
-	secureUserApi := apiV1.Group("/user")
+	userApi := apiV1.Group("/users")
+	userApi.POST("", b.UserController.RegisterUser)
+	userApi.POST("/login", b.UserController.Login)
+	secureUserApi := apiV1.Group("/users")
 	secureUserApi.Use(auth)
 	secureUserApi.GET("/:id", b.UserController.FindByID)
+	secureUserApi.GET("/:username", b.UserController.FindByUserName)
+
+	personnelApi := apiV1.Group("/personnel")
+	personnelApi.Use(auth)
+	personnelApi.GET("/:id", b.PersonnelController.FindPersonnelByID)
+	personnelApi.POST("/filter", b.PersonnelController.Filter)
+	personnelApi.POST("", b.PersonnelController.CreatePersonnel)
+	personnelApi.PUT("/:id", b.PersonnelController.UpdatePersonnel)
+	personnelApi.DELETE("/:id", b.PersonnelController.DeletePersonnel)
 }

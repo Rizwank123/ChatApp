@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var daysOfWeek = map[string]time.Weekday{
@@ -46,6 +47,10 @@ type AppUtil interface {
 	ParseWeekday(v string) (time.Weekday, error)
 	// IsTimeExpired ... Validate if the specified time has expired based on the current time
 	IsTimeExpired(t time.Time) bool
+	// EncryptPassword  ... Encrypt password using bcrypt
+	EncryptPassword(password string) (string, error)
+	// PasswordCheck Check if the password matches the encrypted password
+	PasswordCheck(password string, encryptedPassword string) (bool, error)
 }
 
 // NewAppUtil ... Creates a new AppUtil
@@ -131,4 +136,20 @@ func (as *simpleAppUtil) ParseWeekday(v string) (time.Weekday, error) {
 	}
 
 	return time.Sunday, fmt.Errorf("invalid weekday '%s'", v)
+}
+
+func (as *simpleAppUtil) EncryptPassword(password string) (string, error) {
+	hashPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashPass), nil
+}
+
+func (as *simpleAppUtil) PasswordCheck(inPass string, targetPass string) (bool, error) {
+	err := bcrypt.CompareHashAndPassword([]byte(inPass), []byte(targetPass))
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }

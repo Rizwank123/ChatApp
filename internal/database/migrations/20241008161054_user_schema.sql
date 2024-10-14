@@ -6,7 +6,7 @@ DROP TABLE IF EXISTS "public"."users";
 
 CREATE TABLE "public"."users" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "username" VARCHAR NOT NULL,
+    "user_name" VARCHAR NOT NULL UNIQUE,
     "password" VARCHAR,
     "role" USER_ROLE NOT NULL,
     "created_at" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

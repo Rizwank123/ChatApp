@@ -10,6 +10,8 @@ import (
 	"github.com/chatApp/internal/http/api"
 	"github.com/chatApp/internal/http/controller"
 	"github.com/chatApp/internal/pkg/config"
+	"github.com/chatApp/internal/pkg/security"
+	"github.com/chatApp/internal/pkg/util"
 	"github.com/chatApp/internal/repository"
 	"github.com/chatApp/internal/service"
 )
@@ -30,16 +32,20 @@ func NewDatabaseConfig(cfg config.ChatApiConfig) (*pgxpool.Pool, error) {
 }
 func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*api.ChatApi, error) {
 	wire.Build(
-		//util.NewAppUtil,
-		// security.NewJwtSecurityManager,
+		util.NewAppUtil,
+		security.NewJwtSecurityManager,
 
-		// repository.NewTransactioner,
+		repository.NewTransactioner,
 
 		repository.NewUserRepository,
+		repository.NewPersonnelRepository,
 
 		service.NewUserService,
+		service.NewPersonnelService,
 
 		controller.NewUserController,
+		controller.NewPersonnelController,
+
 		api.NewChatApi,
 	)
 	return &api.ChatApi{}, nil

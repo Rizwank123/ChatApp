@@ -31,9 +31,9 @@ func (r *pgxUserRepository) CreateUser(ctx context.Context, entity *domain.User)
 	args := []interface{}{entity.UserName, entity.Password, entity.Role}
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)
-		err = tx.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.CratedAt, &entity.UpdatedAt)
+		err = tx.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.CreatedAt, &entity.UpdatedAt)
 	} else {
-		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.CratedAt, &entity.UpdatedAt)
+		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.CreatedAt, &entity.UpdatedAt)
 	}
 	return err
 }
@@ -145,7 +145,7 @@ func (r *pgxUserRepository) FindByUserName(ctx context.Context, username string)
 	txVal := ctx.Value(TxKey)
 
 	// Retrieve the data
-	q := `SELECT * FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
+	q := `SELECT * FROM users WHERE user_name = $1 AND deleted_at IS NULL LIMIT 1`
 	args := []interface{}{username}
 	var rows pgx.Rows
 	if txVal != nil {

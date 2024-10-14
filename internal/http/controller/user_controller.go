@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/labstack/echo/v4"
@@ -34,7 +35,7 @@ func NewUserController(ur domain.UserService) UserController {
 //	@Failure		401				{object}	domain.UnauthorizedError
 //	@Failure		403				{object}	domain.ForbiddenAccessError
 //	@Failure		500				{object}	domain.SystemError
-//	@Router			/user/{id} [get]
+//	@Router			/users/{id} [get]
 func (c UserController) FindByID(ctx echo.Context) error {
 	// Parse the path param
 	id, err := uuid.FromString(ctx.Param("id"))
@@ -55,19 +56,27 @@ func (c UserController) FindByID(ctx echo.Context) error {
 //
 //	@Summary		Find a user by username
 //	@Description	Get user information by their username
-//	@Tags			users
+//	@Tags			User
 //	@Accept			json
 //	@Produce		json
-//	@Param			username	path		string		true	"Username"
-//	@Success		200			{object}	domain.User	"User details"
-//	@Failure		400			{object}	domain.InvalidRequestError
-//	@Failure		401			{object}	domain.UnauthorizedError
-//	@Failure		403			{object}	domain.ForbiddenAccessError
-//	@Failure		500			{object}	domain.SystemError
-//	@Router			/user/{username} [get]
+//	@Security		JWT
+//	@Param			Authorization	header		string	true	"Bearer "
+//	@Param			username		path		string	true	"username"
+//	@Success		200				{object}	domain.BaseResponse{data=domain.User}"
+//	@Failure		400				{object}	domain.InvalidRequestError
+//	@Failure		401				{object}	domain.UnauthorizedError
+//	@Failure		403				{object}	domain.ForbiddenAccessError
+//	@Failure		500				{object}	domain.SystemError
+//	@Router			/users/{username} [get]
 func (c UserController) FindByUserName(ctx echo.Context) error {
-	userName := ctx.Param("username")
+	// get the username from the path param
+	encodedUserName := ctx.Param("username")
 
+	// Decode the URL-encoded username (e.g., decode %2B to +)
+	userName, err := url.QueryUnescape(encodedUserName)
+	if err != nil {
+		return err
+	}
 	// Call the service method to find user by username
 	result, err := c.ur.FindByUserName(userName)
 	if err != nil {
@@ -77,20 +86,51 @@ func (c UserController) FindByUserName(ctx echo.Context) error {
 	return transport.SendResponse(ctx, http.StatusOK, result)
 }
 
+// Login authenticates a user based on login credentials.
+//
+//	@Summary		User login
+//	@Description	Authenticate a user using provided credentials
+//	@Tags			Auth
+//	@ID				userLogin
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		domain.LoginInput	true	"Login input"
+//	@Success		200		{object}	domain.BaseResponse{data=domain.LoginOutput}
+//	@Failure		400		{object}	domain.InvalidRequestError
+//	@Failure		401		{object}	domain.UnauthorizedError
+//	@Failure		500		{object}	domain.SystemError
+//	@Router			/users/login [post]
+func (c UserController) Login(ctx echo.Context) error {
+	// Decode the request body
+	var in domain.LoginInput
+	err := transport.DecodeAndValidateRequestBody(ctx, &in)
+	if err != nil {
+		return err
+	}
+	// Call the service to login
+	result, err := c.ur.Login(in)
+	if err != nil {
+		return err
+	}
+	// Return the result
+	return transport.SendResponse(ctx, http.StatusOK, result)
+
+}
+
 // RegisterUser  Register a new user
 //
 //	@Summary		Register a new user
 //	@Description	Create a new user with the provided details
-//	@Tags			users
+//	@Tags			Auth
 //	@Accept			json
 //	@Produce		json
 //	@Param			user	body		domain.RegisterUserInput	true	"User registration details"
-//	@Success		200		{object}	domain.User					"User registered successfully"
+//	@Success		200		{object}	domain.BaseResponse{data=domain.User}"
 //	@Failure		400		{object}	domain.InvalidRequestError
 //	@Failure		401		{object}	domain.UnauthorizedError
 //	@Failure		403		{object}	domain.ForbiddenAccessError
 //	@Failure		500		{object}	domain.SystemError
-//	@Router			/user [post]
+//	@Router			/users [post]
 func (c UserController) RegisterUser(ctx echo.Context) error {
 	// Decode the request body
 	var in domain.RegisterUserInput
@@ -102,5 +142,5 @@ func (c UserController) RegisterUser(ctx echo.Context) error {
 		return err
 	}
 	// Send the response
-	return transport.SendResponse(ctx, http.StatusOK, result)
+	return transport.SendResponse(ctx, http.StatusCreated, result)
 }
