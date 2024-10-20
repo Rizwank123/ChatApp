@@ -196,6 +196,8 @@ definitions:
       token:
         type: string
     type: object
+  NotFoundError:
+    type: object
   Personnel:
     properties:
       activation_status:
@@ -237,6 +239,19 @@ definitions:
         type: string
       user_id:
         example: 12345678-1234-1234-1234-123456789012
+        type: string
+    type: object
+  Product:
+    properties:
+      description:
+        type: string
+      id:
+        type: integer
+      image:
+        type: string
+      price:
+        type: number
+      title:
         type: string
     type: object
   SortKey:
@@ -572,6 +587,83 @@ paths:
       summary: Filter personnel
       tags:
       - Personnel
+  /products:
+    post:
+      consumes:
+      - application/json
+      description: Add a new product to the system.
+      operationId: createProduct
+      parameters:
+      - description: Product details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/Product'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/Product'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      summary: Create a new Product
+      tags:
+      - Product
+  /products/category/{cat}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of products that belong to a specific category.
+      operationId: getProductByCategory
+      parameters:
+      - description: Product Category
+        in: path
+        name: cat
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/BaseResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/Product'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/InvalidRequestError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/NotFoundError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/SystemError'
+      summary: Get Products by Category
+      tags:
+      - Product
   /users:
     post:
       consumes:

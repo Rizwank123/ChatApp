@@ -12,6 +12,7 @@ type ChatApi struct {
 	cfg                 config.ChatApiConfig
 	UserController      controller.UserController
 	PersonnelController controller.PersonnelController
+	ProspectaContoller  controller.ProspectaContoller
 }
 
 // NewChatApi creates a new ChatApi instance
@@ -29,11 +30,12 @@ type ChatApi struct {
 //	@securityDefinitions.apiKey	JWT
 //	@in							header
 //	@name						Authorization
-func NewChatApi(cfg config.ChatApiConfig, pr controller.PersonnelController, uc controller.UserController) *ChatApi {
+func NewChatApi(cfg config.ChatApiConfig, pr controller.PersonnelController, psr controller.ProspectaContoller, uc controller.UserController) *ChatApi {
 	return &ChatApi{
 		cfg:                 cfg,
 		UserController:      uc,
 		PersonnelController: pr,
+		ProspectaContoller:  psr,
 	}
 }
 
@@ -57,4 +59,8 @@ func (b ChatApi) SetupRoutes(e *echo.Echo) {
 	personnelApi.POST("", b.PersonnelController.CreatePersonnel)
 	personnelApi.PUT("/:id", b.PersonnelController.UpdatePersonnel)
 	personnelApi.DELETE("/:id", b.PersonnelController.DeletePersonnel)
+
+	productApi := apiV1.Group("/products")
+	productApi.GET("/category/:cat", b.ProspectaContoller.GetProduct)
+	productApi.POST("", b.ProspectaContoller.CreateProduct)
 }

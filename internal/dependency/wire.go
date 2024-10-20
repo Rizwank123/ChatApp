@@ -42,9 +42,11 @@ func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*api.ChatApi, er
 
 		service.NewUserService,
 		service.NewPersonnelService,
+		service.NewProcpectaService,
 
 		controller.NewUserController,
 		controller.NewPersonnelController,
+		controller.NewProspectaController,
 
 		api.NewChatApi,
 	)
