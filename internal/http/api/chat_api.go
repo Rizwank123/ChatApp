@@ -12,7 +12,6 @@ type ChatApi struct {
 	cfg                 config.ChatApiConfig
 	UserController      controller.UserController
 	PersonnelController controller.PersonnelController
-	ProspectaContoller  controller.ProspectaContoller
 }
 
 // NewChatApi creates a new ChatApi instance
@@ -22,7 +21,7 @@ type ChatApi struct {
 //	@description				Chat application's set of APIs
 //	@termsOfService				https://example.com/terms
 //	@contact.name				Mohammad Developer
-//	@contact.url				https://example.com
+//	@contact.url				https://rizwank123.github.io
 //	@contact.email				mohammad.developer@example.com
 //	@host						localhost:8080
 //	@BasePath					/api/v1
@@ -30,12 +29,11 @@ type ChatApi struct {
 //	@securityDefinitions.apiKey	JWT
 //	@in							header
 //	@name						Authorization
-func NewChatApi(cfg config.ChatApiConfig, pr controller.PersonnelController, psr controller.ProspectaContoller, uc controller.UserController) *ChatApi {
+func NewChatApi(cfg config.ChatApiConfig, pr controller.PersonnelController, uc controller.UserController) *ChatApi {
 	return &ChatApi{
 		cfg:                 cfg,
 		UserController:      uc,
 		PersonnelController: pr,
-		ProspectaContoller:  psr,
 	}
 }
 
@@ -59,8 +57,4 @@ func (b ChatApi) SetupRoutes(e *echo.Echo) {
 	personnelApi.POST("", b.PersonnelController.CreatePersonnel)
 	personnelApi.PUT("/:id", b.PersonnelController.UpdatePersonnel)
 	personnelApi.DELETE("/:id", b.PersonnelController.DeletePersonnel)
-
-	productApi := apiV1.Group("/products")
-	productApi.GET("/category/:cat", b.ProspectaContoller.GetProduct)
-	productApi.POST("", b.ProspectaContoller.CreateProduct)
 }

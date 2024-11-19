@@ -37,14 +37,12 @@ func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*api.ChatApi, er
 	personnelRepository := repository.NewPersonnelRepository(db)
 	personnelService := service.NewPersonnelService(personnelRepository)
 	personnelController := controller.NewPersonnelController(personnelService)
-	procpectaService := service.NewProcpectaService()
-	prospectaContoller := controller.NewProspectaController(procpectaService)
 	appUtil := util.NewAppUtil()
 	manager := security.NewJwtSecurityManager(cfg)
 	transactioner := repository.NewTransactioner(db)
 	userRepository := repository.NewUserRepository(db)
 	userService := service.NewUserService(appUtil, cfg, personnelRepository, manager, transactioner, userRepository)
 	userController := controller.NewUserController(userService)
-	chatApi := api.NewChatApi(cfg, personnelController, prospectaContoller, userController)
+	chatApi := api.NewChatApi(cfg, personnelController, userController)
 	return chatApi, nil
 }

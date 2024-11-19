@@ -44,7 +44,8 @@ type (
 
 	// UpdateMessageStatusInput defines the model for  UpdateMessageStatusInput
 	UpdateMessageStatusInput struct {
-		Mstatus Mstatus `json:"m_status" validate:"required oneof=Sent Delivered Read"`
+		MessageID uuid.UUID `json:"message_id" validate:"required"`
+		Mstatus   Mstatus   `json:"m_status" validate:"required oneof=Sent Delivered Read"`
 	} // @name  UpdateMessageStatusInput
 
 )
@@ -95,7 +96,9 @@ type (
 		// Create creates a new message
 		Create(in CreateMessageInput) (result Message, err error)
 		// Update Message updates a message
-		Update(in UpdateMessageInput) (result Message, err error)
+		Update(id uuid.UUID, in UpdateMessageInput) (result Message, err error)
+		// UpdateMessageStatus  updates the status of a message
+		UpdateMessageStatus(in UpdateMessageStatusInput) (err error)
 		// Delete Message deletes a message
 		Delete(id uuid.UUID) (err error)
 	}

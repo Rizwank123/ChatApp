@@ -219,13 +219,13 @@ func (r *pgxMessageRepository) UpdateMessageStatus(ctx context.Context, entity *
 		ctx = context.Background()
 	}
 	txVal := ctx.Value(TxKey)
-	q := `UPDATE message_statuses SET status = $1 WHERE id = $2 RETURNING id, updated_at`
-	args := []interface{}{entity.Mstatus, entity.ID}
+	q := `UPDATE message_statuses SET status = $1 WHERE message_id = $2 RETURNING  updated_at`
+	args := []interface{}{entity.Mstatus, entity.MessageID}
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)
-		err = tx.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.UpdatedAt)
+		err = tx.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
 	} else {
-		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.UpdatedAt)
+		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
 	}
 	return err
 }
