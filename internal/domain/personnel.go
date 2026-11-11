@@ -18,6 +18,7 @@ type (
 		Base
 		FirstName        string           `db:"first_name" json:"first_name,omitempty" example:"Mohammad"`
 		LastName         string           `db:"last_name" json:"last_name,omitempty" example:"Rizwan"`
+		DisplayName      *string          `db:"display_name" json:"display_name,omitempty" example:"Rizwan Khan"`
 		Gender           *Gender          `db:"gender" json:"gender,omitempty" example:"MALE"`
 		Email            *string          `db:"email" json:"email,omitempty" example:"expertkhan@gmail.com"`
 		Mobile           string           `db:"mobile" json:"mobile,omitempty" example:"+919984778492"`
@@ -25,6 +26,9 @@ type (
 		Role             UserRole         `db:"role" json:"role,omitempty" example:"ADMIN"`
 		Avatar           *string          `db:"avatar" json:"avatar,omitempty" example:"https://example.com/avatar.jpg"`
 		UserID           uuid.UUID        `db:"user_id" json:"user_id"  example:"12345678-1234-1234-1234-123456789012"`
+		Bio              *string          `db:"bio" json:"bio,omitempty" example:"Software Engineer"`
+		IsPrivate        bool             `db:"is_private" json:"is_private,omitempty" example:"false"`
+		Website          *string          `db:"website" json:"website,omitempty" example:"https://example.com"`
 		ActivationStatus ActivationStatus `db:"activation_status" json:"activation_status,omitempty" example:"ACTIVATE"`
 		BaseAudit
 	} // @name  Personnel
@@ -65,6 +69,8 @@ type (
 		FindByID(ctx context.Context, id uuid.UUID) (result Personnel, err error)
 		// FindByUserID  returns the personnel by user id
 		FindByUserID(ctx context.Context, id uuid.UUID) (result Personnel, err error)
+		// FindByUserIDs returns the personnel by user ids
+		FindByUserIDs(ctx context.Context, ids []uuid.UUID) (result []Personnel, err error)
 		// Filter filters personnel by criteria.
 		// limit and offset are used for pagination.
 		// total is the total number of entities.

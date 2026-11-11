@@ -5,101 +5,160 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/gorilla/websocket"
 )
 
 type (
-	Mstatus string // @name Mstatus define type  Mstatus
-)
-
-type (
-	// Message defines the model for Message
-	Message struct {
-		Base
-		SenderID   uuid.UUID `db:"sender_id" json:"sender_id"  validate:"required" example:""`
-		ReceiverID uuid.UUID `db:"receiver_id" json:"receiver_id"  validate:"required" example:""`
-		Content    string    `db:"content" json:"content,omitempty" example:"hi how are you"`
-		BaseAudit
-	} // @name  Message
-	// MessageStatus defines the model for MessageStatus
-	MessageStatus struct {
-		Base
-		MessageID uuid.UUID `db:"message_id" json:"message_id"  validate:"required"`
-		Mstatus   Mstatus   `db:"status" json:"m_status"  validate:"required oneof=Sent Delivered, Read"`
-		UpdatedAt time.Time `db:"updated_at" json:"updated_at" example:""`
-	} // @name  MessageStatus
-)
-
-type (
-	// CreateMessageInput  defines the input for CreateMessageInput
-	CreateMessageInput struct {
-		SenderID   uuid.UUID `json:"sender_id" validate:"required"`
-		ReceiverID uuid.UUID `json:"receiver_id" validate:"required"`
-		Content    string    `json:"content" validate:"required"`
-	} // @name  CreateMessageInput
-
-	// UpdateMessageInput  defines the input for UpdateMessageInput
-	UpdateMessageInput struct {
-		Content string `json:"content" validate:"required"`
-	} // @name  UpdateMessageInput
-
-	// UpdateMessageStatusInput defines the model for  UpdateMessageStatusInput
-	UpdateMessageStatusInput struct {
-		MessageID uuid.UUID `json:"message_id" validate:"required"`
-		Mstatus   Mstatus   `json:"m_status" validate:"required oneof=Sent Delivered Read"`
-	} // @name  UpdateMessageStatusInput
-
+	MessageType      string
+	MessageStatus    string
+	FriendshipStatus string
+	ConversationType string
 )
 
 const (
-	MstatusSent      Mstatus = "Sent"
-	MstatusDelivered Mstatus = "Delivered"
-	MstatusRead      Mstatus = "Read"
+	MessageTypeText  MessageType = "TEXT"
+	MessageTypeImage MessageType = "IMAGE"
+	MessageTypeFile  MessageType = "FILE"
+)
+
+const (
+	MessageStatusDelivered MessageStatus = "DELIVERED"
+	MessageStatusRead      MessageStatus = "READ"
+)
+
+const (
+	FriendshipStatusPending  FriendshipStatus = "PENDING"
+	FriendshipStatusAccepted FriendshipStatus = "ACCEPTED"
+	FriendshipStatusBlocked  FriendshipStatus = "BLOCKED"
+)
+
+const (
+	ConversationTypeDirect ConversationType = "DIRECT"
+	ConversationTypeGroup  ConversationType = "GROUP"
 )
 
 type (
-	// MessageRepository defines the methods that any message Repository should implement
-	MessageRepository interface {
-		// FindByID  returns a message by its ID
-		FindByID(ctx context.Context, id uuid.UUID) (result Message, err error)
-		// FindAll returns all messages
-		FindAll(ctx context.Context) (result []Message, err error)
-		// FindBySenderID returns all messages sent by a
-		FindBySenderID(ctx context.Context, senderID uuid.UUID) (result []Message, err error)
-		// FindByReceiverID returns all messages received by a user
-		FindByReceiverID(ctx context.Context, receiverID uuid.UUID) (result []Message, err error)
-		// Create creates a new message
-		Create(ctx context.Context, entity *Message) (err error)
-		// CreateMultiple creates multiple messages
-		CreateMultiple(ctx context.Context, entities []*Message) (err error)
-		// UpdateMessage updates a message
-		Update(ctx context.Context, entity *Message) (err error)
-		// UpdateMultiple updates multiple messages
-		UpdateMultiple(ctx context.Context, entities []*Message) (err error)
-		// CreateMessageStatus creates a new message status
-		CreateMessageStatus(ctx context.Context, entity *MessageStatus) (err error)
-		// UpdateMessageStatus updates the status of a message
-		UpdateMessageStatus(ctx context.Context, entity *MessageStatus) (err error)
-		// Delete Message deletes a message
-		Delete(ctx context.Context, id uuid.UUID) (err error)
-	} // @name  MessageRepository
+	Friendship struct {
+		Base
+		PersonnelID uuid.UUID        `db:"personnel_id" json:"personnel_id"`
+		FriendID    uuid.UUID        `db:"friend_id" json:"friend_id"`
+		Status      FriendshipStatus `db:"status" json:"status"`
+		BaseAudit
+	}
 
-	//  MessageService defines the methods that any message Service should implement
-	MessageService interface {
-		// FindByID  returns a message by its ID
-		FindByID(id uuid.UUID) (result Message, err error)
-		// FindAll returns all messages
-		FindAll() (result []Message, err error)
-		// FindBySenderID returns all messages sent by a
-		FindBySenderID(senderID uuid.UUID) (result []Message, err error)
-		// FindByReceiverID returns all messages received by a user
-		FindByReceiverID(receiverID uuid.UUID) (result []Message, err error)
-		// Create creates a new message
-		Create(in CreateMessageInput) (result Message, err error)
-		// Update Message updates a message
-		Update(id uuid.UUID, in UpdateMessageInput) (result Message, err error)
-		// UpdateMessageStatus  updates the status of a message
-		UpdateMessageStatus(in UpdateMessageStatusInput) (err error)
-		// Delete Message deletes a message
-		Delete(id uuid.UUID) (err error)
+	Conversation struct {
+		Base
+		Name             *string          `db:"name" json:"name,omitempty"`
+		ConversationType ConversationType `db:"conversation_type" json:"conversation_type"`
+		BaseAudit
+	}
+
+	ConversationParticipant struct {
+		Base
+		ConversationID uuid.UUID  `db:"conversation_id" json:"conversation_id"`
+		PersonnelID    uuid.UUID  `db:"personnel_id" json:"personnel_id"`
+		JoinedAt       time.Time  `db:"joined_at" json:"joined_at"`
+		LeftAt         *time.Time `db:"left_at" json:"left_at,omitempty"`
+		BaseAudit
+	}
+
+	Message struct {
+		Base
+		ConversationID uuid.UUID   `db:"conversation_id" json:"conversation_id"`
+		SenderID       uuid.UUID   `db:"sender_id" json:"sender_id"`
+		MessageType    MessageType `db:"message_type" json:"message_type"`
+		Content        string      `db:"content" json:"content"`
+		CreatedAt      time.Time   `db:"created_at" json:"created_at"`
+		BaseAudit
+	}
+
+	MessageStatusEntity struct {
+		Base
+		MessageID   uuid.UUID     `db:"message_id" json:"message_id"`
+		PersonnelID uuid.UUID     `db:"personnel_id" json:"personnel_id"`
+		Status      MessageStatus `db:"status" json:"status"`
+		BaseAudit
+	}
+)
+
+type (
+	CreateFriendshipInput struct {
+		FriendUsername string `json:"friend_username"`
+	}
+
+	CreateMessageInput struct {
+		ConversationID uuid.UUID   `json:"conversation_id"`
+		MessageType    MessageType `json:"message_type"`
+		Content        string      `json:"content"`
+	}
+
+	CreateConversationInput struct {
+		Name             string           `json:"name,omitempty"`
+		ConversationType ConversationType `json:"conversation_type"`
+		ParticipantIDs   []uuid.UUID      `json:"participant_ids"`
+	}
+
+	UpdateMessageStatusInput struct {
+		Status MessageStatus `json:"status"`
+	}
+)
+
+type (
+	ChatRepository interface {
+		// Friendship methods
+		CreateFriendship(ctx context.Context, friendship *Friendship) error
+		UpdateFriendshipStatus(ctx context.Context, id uuid.UUID, status FriendshipStatus) error
+		FindFriendshipByID(ctx context.Context, id uuid.UUID) (Friendship, error)
+		FindFriendships(ctx context.Context, personnelID uuid.UUID) ([]Friendship, error)
+
+		// Conversation methods
+		CreateConversation(ctx context.Context, conversation *Conversation) error
+		FindConversationByID(ctx context.Context, id uuid.UUID) (Conversation, error)
+		FindDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error)
+		FindUserConversations(ctx context.Context, personnelID uuid.UUID) ([]Conversation, error)
+		FindConversationParticipantIDs(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error)
+		AddParticipant(ctx context.Context, participant *ConversationParticipant) error
+		RemoveParticipant(ctx context.Context, conversationID, personnelID uuid.UUID) error
+
+		// Message methods
+		CreateMessage(ctx context.Context, message *Message) error
+		FindMessagesByConversation(ctx context.Context, conversationID uuid.UUID, options QueryOptions) ([]Message, int64, error)
+		UpdateMessageStatus(ctx context.Context, status *MessageStatusEntity) error
+		FindMessageStatuses(ctx context.Context, messageID uuid.UUID) ([]MessageStatusEntity, error)
+	}
+
+	ChatService interface {
+		// Friendship methods
+		SendFriendRequest(personnelID uuid.UUID, input CreateFriendshipInput) (Friendship, error)
+		AcceptFriendRequest(personnelID uuid.UUID, friendshipID uuid.UUID) error
+		GetFriendships(personnelID uuid.UUID) ([]Friendship, error)
+
+		// Conversation methods
+		CreateConversation(personnelID uuid.UUID, input CreateConversationInput) (Conversation, error)
+		GetConversation(personnelID uuid.UUID, id uuid.UUID) (Conversation, error)
+		GetUserConversations(personnelID uuid.UUID) ([]Conversation, error)
+
+		// Message methods
+		SendMessage(personnelID uuid.UUID, input CreateMessageInput) (Message, error)
+		GetMessages(personnelID uuid.UUID, conversationID uuid.UUID, options QueryOptions) ([]Message, int64, error)
+		UpdateMessageStatus(personnelID uuid.UUID, messageID uuid.UUID, input UpdateMessageStatusInput) error
+	}
+
+	WebSocketService interface {
+		RegisterConnection(personnelID uuid.UUID, conn *websocket.Conn)
+		UnregisterConnection(personnelID uuid.UUID)
+		SendMessageToUser(personnelID uuid.UUID, message Message) error
+		BroadcastToConversation(conversationID uuid.UUID, message Message) error
+	}
+
+	MessageEvent struct {
+		ConversationID uuid.UUID   `json:"conversation_id"`
+		Recipients     []uuid.UUID `json:"recipients"`
+		Message        Message     `json:"message"`
+	}
+
+	MessageBroker interface {
+		PublishMessage(ctx context.Context, event MessageEvent) error
+		SubscribeMessages(ctx context.Context) (<-chan MessageEvent, error)
 	}
 )

@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/domain"
 )
 
 type pgxPersonnelRepository struct {
@@ -120,6 +120,26 @@ func (r *pgxPersonnelRepository) FindByUserID(ctx context.Context, id uuid.UUID)
 	result, err = pgx.CollectOneRow(rows, pgx.RowToStructByNameLax[domain.Personnel])
 	return result, err
 
+}
+func (r *pgxPersonnelRepository) FindByUserIDs(ctx context.Context, ids []uuid.UUID) (result []domain.Personnel, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	q := `SELECT * FROM  personnel WHERE user_id = ANY($1) AND deleted_at IS Null`
+	args := []interface{}{ids}
+	var rows pgx.Rows
+	if txVal := ctx.Value(TxKey); txVal != nil {
+		tx := txVal.(pgx.Tx)
+		rows, err = tx.Query(ctx, q, args...)
+	} else {
+		rows, err = r.db.Query(ctx, q, args...)
+	}
+	defer rows.Close()
+	if err != nil {
+		return result, err
+	}
+	result, err = pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Personnel])
+	return result, err
 }
 
 // Create implements domain.PersonnelRepository.

@@ -1,5 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
+DROP TYPE IF EXISTS USER_ROLE;
+
 CREATE TYPE USER_ROLE AS ENUM ('ADMIN', 'USER');
 
 DROP TABLE IF EXISTS "public"."users";
@@ -18,6 +20,8 @@ CREATE TABLE "public"."users" (
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin
+DROP TYPE IF EXISTS USER_ROLE;
+
 DROP TABLE IF EXISTS users;
 
 -- +goose StatementEnd

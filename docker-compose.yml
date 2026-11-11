@@ -1,0 +1,169 @@
+version: "3.8"
+
+networks:
+  webnet:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  redpandadata:
+  miniodata:
+
+services:
+  chatappdb:
+    container_name: chatappdb
+    image: postgres:15-alpine
+    networks:
+      - webnet
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_DB: ${DB_DATABASE_NAME:-chatapp}
+      PGDATA: /var/lib/postgresql/data
+    env_file:
+      - .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  redis:
+    container_name: chatapp_redis
+    image: redis/redis-stack-server:latest
+    networks:
+      - webnet
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redpanda:
+    container_name: chatapp_kafka
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    networks:
+      - webnet
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    volumes:
+      - redpandadata:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -i healthy || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    container_name: chatapp_minio
+    image: minio/minio:latest
+    networks:
+      - webnet
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    container_name: chatapp_minio_init
+    image: minio/mc:latest
+    networks:
+      - webnet
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 $${MINIO_ACCESS_KEY:-minioadmin} $${MINIO_SECRET_KEY:-minioadmin};
+      /usr/bin/mc mb --ignore-existing local/$${MINIO_BUCKET:-chatapp-media};
+      /usr/bin/mc anonymous set download local/$${MINIO_BUCKET:-chatapp-media};
+      exit 0;
+      "
+
+  chatappapi:
+    container_name: chatappapi
+    networks:
+      - webnet
+    expose:
+      - ${APP_PORT:-8080}
+    ports:
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/go.mod
+      - /usr/src/app/go.sum
+    build:
+      context: .
+      target: development
+    environment:
+      DB_HOST: chatappdb
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-chatapp}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BROKERS: redpanda:29092
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-minio}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-chatapp-media}
+      MINIO_USE_SSL: "false"
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000/chatapp-media}
+    env_file:
+      - .env
+    depends_on:
+      chatappdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    container_name: nginx
+    image: nginx:latest
+    networks:
+      - webnet
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./.certs:/etc/nginx/certs
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/sites-available:/etc/nginx/sites-available
+      - ./config/sites-enabled:/etc/nginx/sites-enabled
+    depends_on:
+      - chatappapi

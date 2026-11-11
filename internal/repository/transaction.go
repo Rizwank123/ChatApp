@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/domain"
 )
 
 var ErrTransactionNotFound = errors.New("no transaction found")

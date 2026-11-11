@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/Rizwank123/chatApp/internal/dependency"
+	"github.com/Rizwank123/chatApp/internal/http/swagger"
+	"github.com/Rizwank123/chatApp/internal/pkg/config"
+	"github.com/Rizwank123/chatApp/internal/service"
 	"github.com/labstack/echo/v4"
-
-	"github.com/chatApp/internal/dependency"
-	"github.com/chatApp/internal/http/swagger"
-	"github.com/chatApp/internal/pkg/config"
 )
 
 func main() {
@@ -26,19 +26,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create connection for database: %v", err)
 	}
-	err = db.Ping(context.Background())
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
-	// Defer closing the database connection
-	defer db.Close()
 
 	// Initialize the dependencies
-	api, err := dependency.NewChatAppApi(cfg, db)
-
+	handlers, err := dependency.NewChatAppApi(cfg, db)
 	if err != nil {
 		log.Fatalf("failed to create dependencies: %v", err)
 	}
+
+	api := handlers.API
+	hub := handlers.Hub
+	broker := handlers.Broker
+
+	//Start the WebSocket server
+	go hub.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		if err := service.DeliverBrokerMessages(ctx, broker, hub); err != nil && err != context.Canceled {
+			log.Printf("message broker stopped: %v", err)
+		}
+	}()
+
 	// Set up the echo server
 	e := echo.New()
 	e.HideBanner = true
@@ -63,15 +71,26 @@ func main() {
 	<-quit
 
 	log.Println("Server is shutting down...")
+	cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Create a channel to signal shutdown completion
+	done := make(chan struct{})
 
-	if err := e.Shutdown(ctx); err != nil {
-		e.Logger.Fatal(err)
+	// Start shutdown in a goroutine
+	go func() {
+		if err := e.Shutdown(nil); err != nil {
+			e.Logger.Fatal(err)
+		}
+		close(done)
+	}()
+
+	// Wait for shutdown with timeout
+	select {
+	case <-done:
+		log.Println("Server gracefully stopped")
+	case <-time.After(10 * time.Second):
+		log.Println("Server shutdown timed out")
 	}
-
-	log.Println("Server gracefully stopped")
 }
 
 func getConfigOptions() config.Options {

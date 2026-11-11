@@ -8,6 +8,7 @@ import (
 // TokenMetadata represents the metadata in the auth token
 type TokenMetadata struct {
 	UserID         string `json:"user_id"`
+	PersonnelID    string `json:"personnel_id"`
 	OrganizationID string `json:"organization_id"`
 	Role           string `json:"role"`
 }

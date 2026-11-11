@@ -2,272 +2,263 @@ package repository
 
 import (
 	"context"
-	"log"
+	"errors"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/domain"
 )
 
-type pgxMessageRepository struct {
+type pgxChatRepository struct {
 	db *pgxpool.Pool
+	sq squirrel.StatementBuilderType
 }
 
-func NewPgxMessageRepository(db *pgxpool.Pool) domain.MessageRepository {
-	return &pgxMessageRepository{db: db}
+func NewChatRepository(db *pgxpool.Pool) domain.ChatRepository {
+	return &pgxChatRepository{
+		db: db,
+		sq: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+	}
 }
 
-// FindAll implements domain.MessageRepository.
-func (r *pgxMessageRepository) FindAll(ctx context.Context) (result []domain.Message, err error) {
-	if ctx == nil {
-		ctx = context.Background()
+// Friendship methods
+func (r *pgxChatRepository) CreateFriendship(ctx context.Context, friendship *domain.Friendship) error {
+	q := r.sq.Insert("friendships").
+		Columns("personnel_id", "friend_id", "status").
+		Values(friendship.PersonnelID, friendship.FriendID, friendship.Status).
+		Suffix("RETURNING id, created_at, updated_at")
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return err
 	}
-	txVal := ctx.Value(TxKey)
-	q := `SELECT *  FROM messages WHERE  deleted_at IS NULL`
-	var rows pgx.Rows
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		rows, err = tx.Query(ctx, q)
-	} else {
-		rows, err = r.db.Query(ctx, q)
+	return r.db.QueryRow(ctx, sql, args...).Scan(&friendship.ID, &friendship.CreatedAt, &friendship.UpdatedAt)
+}
+
+func (r *pgxChatRepository) UpdateFriendshipStatus(ctx context.Context, id uuid.UUID, status domain.FriendshipStatus) error {
+	q := r.sq.Update("friendships").
+		Set("status", status).
+		Set("updated_at", squirrel.Expr("now()")).
+		Where(squirrel.Eq{"id": id})
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return err
 	}
+	_, err = r.db.Exec(ctx, sql, args...)
+	return err
+}
+
+func (r *pgxChatRepository) FindFriendshipByID(ctx context.Context, id uuid.UUID) (result domain.Friendship, err error) {
+	q := r.sq.Select("*").From("friendships").Where(squirrel.Eq{"id": id})
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return result, err
+	}
+	var row pgx.Rows
+	row, err = r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return result, err
+	}
+
+	result, err = pgx.CollectOneRow(row, pgx.RowToStructByNameLax[domain.Friendship])
+	return result, err
+}
+
+func (r *pgxChatRepository) FindFriendships(ctx context.Context, userID uuid.UUID) ([]domain.Friendship, error) {
+	q := r.sq.Select("*").From("friendships").
+		Where(squirrel.Or{
+			squirrel.Eq{"personnel_id": userID},
+			squirrel.Eq{"friend_id": userID},
+		})
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result, err = pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Message])
-	if err != nil {
-		return result, err
-	}
-	return result, nil
-
+	return pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Friendship])
 }
 
-// FindByID implements domain.MessageRepository.
-func (r *pgxMessageRepository) FindByID(ctx context.Context, id uuid.UUID) (result domain.Message, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	txVal := ctx.Value(TxKey)
-	q := `SELECT * FROM messages WHERE id = $1 AND deleted_at IS NULL`
-	args := []interface{}{id}
-	var row pgx.Rows
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		row, err = tx.Query(ctx, q, args...)
-	} else {
-		row, err = r.db.Query(ctx, q, args...)
-	}
+// Conversation methods
+func (r *pgxChatRepository) CreateConversation(ctx context.Context, conversation *domain.Conversation) error {
+	q := r.sq.Insert("conversations").
+		Columns("name", "conversation_type").
+		Values(conversation.Name, conversation.ConversationType).
+		Suffix("RETURNING id, created_at, updated_at")
+	sql, args, err := q.ToSql()
 	if err != nil {
-		return result, err
+		return err
 	}
-	defer row.Close()
-	result, err = pgx.CollectOneRow(row, pgx.RowToStructByNameLax[domain.Message])
-	if err != nil {
-		return result, err
-	}
-	return result, nil
-
+	return r.db.QueryRow(ctx, sql, args...).Scan(&conversation.ID, &conversation.CreatedAt, &conversation.UpdatedAt)
 }
 
-// FindByReceiverID implements domain.MessageRepository.
-func (r *pgxMessageRepository) FindByReceiverID(ctx context.Context, receiver_id uuid.UUID) (result []domain.Message, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	txVal := ctx.Value(TxKey)
-	q := `SELECT * FROM messages WHERE receiver_id = $1 AND deleted_at IS NULL`
-	args := []interface{}{receiver_id}
-	var rows pgx.Rows
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		rows, err = tx.Query(ctx, q, args...)
-	} else {
-		rows, err = r.db.Query(ctx, q, args...)
-	}
+func (r *pgxChatRepository) FindConversationByID(ctx context.Context, id uuid.UUID) (result domain.Conversation, err error) {
+	q := r.sq.Select("*").From("conversations").Where(squirrel.Eq{"id": id})
+	sql, args, err := q.ToSql()
 	if err != nil {
-		return result, err
+		return domain.Conversation{}, err
+	}
+	row, err := r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+	result, err = pgx.CollectOneRow(row, pgx.RowToStructByNameLax[domain.Conversation])
+	return result, err
+}
+
+func (r *pgxChatRepository) FindDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*domain.Conversation, error) {
+	q := `SELECT c.id, c.name, c.conversation_type, c.created_at, c.updated_at
+	      FROM conversations c
+	      JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.personnel_id = $1 AND cp1.left_at IS NULL
+	      JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.personnel_id = $2 AND cp2.left_at IS NULL
+	      WHERE c.conversation_type = 'DIRECT' AND c.deleted_at IS NULL
+	      LIMIT 1`
+	var conv domain.Conversation
+	err := r.db.QueryRow(ctx, q, userA, userB).Scan(&conv.ID, &conv.Name, &conv.ConversationType, &conv.CreatedAt, &conv.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &conv, nil
+}
+
+func (r *pgxChatRepository) FindUserConversations(ctx context.Context, userID uuid.UUID) ([]domain.Conversation, error) {
+	q := r.sq.Select("c.*").
+		From("conversations c").
+		Join("conversation_participants cp ON c.id = cp.conversation_id").
+		Where(squirrel.Eq{"cp.personnel_id": userID, "cp.left_at": nil})
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
-	result, err = pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Message])
-	if err != nil {
-		return result, err
-	}
-	return result, nil
+	return pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Conversation])
 }
 
-// FindBySenderID implements domain.MessageRepository.
-func (r *pgxMessageRepository) FindBySenderID(ctx context.Context, sender_id uuid.UUID) (result []domain.Message, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	txVal := ctx.Value(TxKey)
-	q := `SELECT * FROM messages WHERE receiver_id = $1 AND deleted_at IS NULL`
-	args := []interface{}{sender_id}
-	var rows pgx.Rows
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		rows, err = tx.Query(ctx, q, args...)
-	} else {
-		rows, err = r.db.Query(ctx, q, args...)
-	}
+func (r *pgxChatRepository) FindConversationParticipantIDs(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error) {
+	q := r.sq.Select("personnel_id").
+		From("conversation_participants").
+		Where(squirrel.Eq{"conversation_id": conversationID, "left_at": nil, "deleted_at": nil})
+	sql, args, err := q.ToSql()
 	if err != nil {
-		return result, err
+		return nil, err
+	}
+	rows, err := r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
-	result, err = pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Message])
+
+	var participantIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		participantIDs = append(participantIDs, id)
+	}
+	return participantIDs, rows.Err()
+}
+
+func (r *pgxChatRepository) AddParticipant(ctx context.Context, participant *domain.ConversationParticipant) error {
+	q := r.sq.Insert("conversation_participants").
+		Columns("conversation_id", "personnel_id", "joined_at").
+		Values(participant.ConversationID, participant.PersonnelID, participant.JoinedAt).
+		Suffix("RETURNING id, created_at, updated_at")
+	sql, args, err := q.ToSql()
 	if err != nil {
-		return result, err
+		return err
 	}
-	return result, nil
+	return r.db.QueryRow(ctx, sql, args...).Scan(&participant.ID, &participant.CreatedAt, &participant.UpdatedAt)
 }
 
-// Create implements domain.MessageRepository.
-func (r *pgxMessageRepository) Create(ctx context.Context, entity *domain.Message) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
+func (r *pgxChatRepository) RemoveParticipant(ctx context.Context, conversationID, userID uuid.UUID) error {
+	q := r.sq.Update("conversation_participants").
+		Set("left_at", squirrel.Expr("now()")).
+		Where(squirrel.Eq{"conversation_id": conversationID, "personnel_id": userID, "left_at": nil})
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return err
 	}
-	txVal := ctx.Value(TxKey)
-	q := `INSERT INTO messages (sender_id, receiver_id, message) VALUES ($1, $2, $3) RETURNING id, created_at, updated_at`
-	args := []interface{}{entity.SenderID, entity.ReceiverID, entity.Content}
-
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		err = tx.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.CreatedAt, &entity.UpdatedAt)
-	} else {
-		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.ID, &entity.CreatedAt, &entity.UpdatedAt)
-	}
-	return err
-
-}
-
-// CreateMessageStatus implements domain.MessageRepository.
-func (r *pgxMessageRepository) CreateMessageStatus(ctx context.Context, entity *domain.MessageStatus) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	txVal := ctx.Value(TxKey)
-	q := `INSERT INTO message_statuses (message_id, status) VALUES ($1, $2) RETURNING UpdatedAt`
-	args := []interface{}{entity.MessageID, entity.Mstatus}
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		err = tx.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
-	} else {
-		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
-	}
-	return err
-
-}
-
-// CreateMultiple implements domain.MessageRepository.
-func (r *pgxMessageRepository) CreateMultiple(ctx context.Context, entities []*domain.Message) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	txVal := ctx.Value(TxKey)
-	b := &pgx.Batch{}
-	for _, entity := range entities {
-		q := `INSERT INTO messages (sender_id, receiver_id, message) VALUES ($1,, $2, $3) RETURNING  id, created_at, updated_at`
-		args := []interface{}{entity.SenderID, entity.ReceiverID, entity.Content}
-		b.Queue(q, args...)
-	}
-	var br pgx.BatchResults
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		br = tx.SendBatch(ctx, b)
-	} else {
-		br = r.db.SendBatch(ctx, b)
-	}
-	defer func(br pgx.BatchResults) {
-		err := br.Close()
-		if err != nil {
-			log.Println("Error closing batch results", err)
-		}
-	}(br)
-	for idx := range entities {
-		err = br.QueryRow().Scan(&entities[idx].ID, &entities[idx].CreatedAt, &entities[idx].UpdatedAt)
-		if err != nil {
-			return err
-		}
-	}
-
+	_, err = r.db.Exec(ctx, sql, args...)
 	return err
 }
 
-// Update implements domain.MessageRepository.
-func (r *pgxMessageRepository) Update(ctx context.Context, entity *domain.Message) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
+// Message methods
+func (r *pgxChatRepository) CreateMessage(ctx context.Context, message *domain.Message) error {
+	q := r.sq.Insert("messages").
+		Columns("id", "conversation_id", "sender_id", "message_type", "content").
+		Values(message.ID, message.ConversationID, message.SenderID, message.MessageType, message.Content).
+		Suffix("RETURNING created_at, updated_at")
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return err
 	}
-	txVal := ctx.Value(ctx)
-	q := `UPDATE messages SET sender_id = $1, receiver_id = $2, message = $3 WHERE id = $4  RETURNING updated_at`
-	args := []interface{}{entity.SenderID, entity.ReceiverID, entity.Content, entity.ID}
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		err = tx.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
-	} else {
-		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
-	}
-	return err
+	return r.db.QueryRow(ctx, sql, args...).Scan(&message.CreatedAt, &message.UpdatedAt)
 }
 
-// UpdateMessageStatus implements domain.MessageRepository.
-func (r *pgxMessageRepository) UpdateMessageStatus(ctx context.Context, entity *domain.MessageStatus) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
+func (r *pgxChatRepository) FindMessagesByConversation(ctx context.Context, conversationID uuid.UUID, options domain.QueryOptions) ([]domain.Message, int64, error) {
+	countQuery := r.sq.Select("COUNT(*)").From("messages").Where(squirrel.Eq{"conversation_id": conversationID})
+	sqlC, argsC, err := countQuery.ToSql()
+	if err != nil {
+		return nil, 0, err
 	}
-	txVal := ctx.Value(TxKey)
-	q := `UPDATE message_statuses SET status = $1 WHERE message_id = $2 RETURNING  updated_at`
-	args := []interface{}{entity.Mstatus, entity.MessageID}
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		err = tx.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
-	} else {
-		err = r.db.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)
+	var total int64
+	err = r.db.QueryRow(ctx, sqlC, argsC...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
 	}
-	return err
+
+	q := r.sq.Select("*").From("messages").
+		Where(squirrel.Eq{"conversation_id": conversationID}).
+		OrderBy("created_at DESC").
+		Limit(uint64(options.Limit)).Offset(uint64(options.Offset))
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return nil, total, err
+	}
+	rows, err := r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, total, err
+	}
+	defer rows.Close()
+	messages, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.Message])
+	return messages, total, err
 }
 
-// UpdateMultiple implements domain.MessageRepository.
-func (r *pgxMessageRepository) UpdateMultiple(ctx context.Context, entities []*domain.Message) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
+func (r *pgxChatRepository) UpdateMessageStatus(ctx context.Context, status *domain.MessageStatusEntity) error {
+	q := r.sq.Insert("message_stat").
+		Columns("id", "message_id", "personnel_id", "status").
+		Values(status.ID, status.MessageID, status.PersonnelID, status.Status).
+		Suffix(`ON CONFLICT (message_id, personnel_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now() RETURNING created_at, updated_at`)
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return err
 	}
-	txVal := ctx.Value(TxKey)
-
-	b := &pgx.Batch{}
-	for _, entity := range entities {
-		q := `UPDATE messages SET sender_id = $1, receiver_id = $2, message = $3  WHERE id = $4 `
-		args := []interface{}{entity.SenderID, entity.ReceiverID, entity.Content, entity.ID}
-		b.Queue(q, args...)
-	}
-	// Send the batch
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		err = tx.SendBatch(ctx, b).Close()
-	} else {
-		err = r.db.SendBatch(ctx, b).Close()
-	}
-
-	return err
+	return r.db.QueryRow(ctx, sql, args...).Scan(&status.CreatedAt, &status.UpdatedAt)
 }
 
-// Delete implements domain.MessageRepository.
-func (r *pgxMessageRepository) Delete(ctx context.Context, id uuid.UUID) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
+func (r *pgxChatRepository) FindMessageStatuses(ctx context.Context, messageID uuid.UUID) ([]domain.MessageStatusEntity, error) {
+	q := r.sq.Select("*").From("message_stat").Where(squirrel.Eq{"message_id": messageID})
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return nil, err
 	}
-	txVal := ctx.Value(TxKey)
-
-	q := `UPDATE messages set deleted_at = NOW() Where id = $1`
-	args := []interface{}{id}
-	if txVal != nil {
-		tx := txVal.(pgx.Tx)
-		_, err = tx.Exec(ctx, q, args...)
-	} else {
-		_, err = r.db.Exec(ctx, q, args...)
+	rows, err := r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	defer rows.Close()
+	return pgx.CollectRows(rows, pgx.RowToStructByNameLax[domain.MessageStatusEntity])
 }

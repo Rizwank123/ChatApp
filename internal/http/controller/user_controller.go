@@ -7,8 +7,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/labstack/echo/v4"
 
-	"github.com/chatApp/internal/domain"
-	"github.com/chatApp/internal/http/transport"
+	"github.com/Rizwank123/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/http/transport"
 )
 
 type UserController struct {
@@ -49,6 +49,33 @@ func (c UserController) FindByID(ctx echo.Context) error {
 		return err
 	}
 	// Return the result
+	return transport.SendResponse(ctx, http.StatusOK, result)
+}
+
+// CheckUsernameAvailability checks if a username is available.
+//
+//	@Summary		Check username availability
+//	@Description	Validates and checks if a username is already taken using Bloom filter + PostgreSQL
+//	@Tags			Auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			username	query		string	true	"Username to check"
+//	@Success		200			{object}	domain.BaseResponse{data=domain.CheckUsernameAvailabilityOutput}
+//	@Failure		400			{object}	domain.InvalidRequestError
+//	@Failure		500			{object}	domain.SystemError
+//	@Router			/users/check-username [get]
+func (c UserController) CheckUsernameAvailability(ctx echo.Context) error {
+	rawUsername := ctx.QueryParam("username")
+	if rawUsername == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]interface{}{
+			"status":  "error",
+			"message": "username query parameter is required",
+		})
+	}
+	result, err := c.ur.CheckUsernameAvailability(rawUsername)
+	if err != nil {
+		return err
+	}
 	return transport.SendResponse(ctx, http.StatusOK, result)
 }
 

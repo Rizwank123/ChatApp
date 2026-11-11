@@ -27,6 +27,15 @@ type ChatApiConfig struct {
 
 	AuthSecret       string `mapstructure:"AUTH_SECRET"`
 	AuthExpiryPeriod int    `mapstructure:"AUTH_EXPIRY_PERIOD"`
+
+	StorageProvider string `mapstructure:"STORAGE_PROVIDER"`
+	MinIOEndpoint   string `mapstructure:"MINIO_ENDPOINT"`
+	MinIOAccessKey  string `mapstructure:"MINIO_ACCESS_KEY"`
+	MinIOSecretKey  string `mapstructure:"MINIO_SECRET_KEY"`
+	MinIOBucket     string `mapstructure:"MINIO_BUCKET"`
+	MinIOUseSSL     bool   `mapstructure:"MINIO_USE_SSL"`
+	MinIORegion     string `mapstructure:"MINIO_REGION"`
+	MinIOPublicURL  string `mapstructure:"MINIO_PUBLIC_URL"`
 }
 
 type Options struct {

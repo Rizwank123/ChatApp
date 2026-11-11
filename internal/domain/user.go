@@ -36,7 +36,7 @@ type (
 	} // @name UpdateUserInput
 	// LoginInput  define the module for the LoginInput
 	LoginInput struct {
-		UserName string `json:"user_name" example:"+919984778491 or example"`
+		UserName string `json:"username" example:"+919876543210"`
 		Password string `json:"password"`
 	} // @name LoginInput
 	// LoginOutput define the module for the LoginOutput
@@ -44,6 +44,31 @@ type (
 		Token     string `json:"token"`
 		ExpiresIn int64  `json:"expires_in"`
 	} // @name LoginOutput
+
+	// CheckUsernameAvailabilityInput input for checking username
+	CheckUsernameAvailabilityInput struct {
+		UserName string `json:"username" query:"username" validate:"required"`
+	}
+
+	// CheckUsernameAvailabilityOutput response for checking username
+	CheckUsernameAvailabilityOutput struct {
+		UserName    string `json:"username"`
+		IsAvailable bool   `json:"is_available"`
+		Reason      string `json:"reason,omitempty"`
+	}
+
+	// UserProfileSearchResult item for search results
+	UserProfileSearchResult struct {
+		UserID      uuid.UUID `json:"user_id"`
+		PersonnelID uuid.UUID `json:"personnel_id"`
+		UserName    string    `json:"user_name"`
+		DisplayName string    `json:"display_name"`
+		Avatar      *string   `json:"avatar,omitempty"`
+		Bio         *string   `json:"bio,omitempty"`
+		IsFollowing bool      `json:"is_following"`
+		FollowsYou  bool      `json:"follows_you"`
+		IsMutual    bool      `json:"is_mutual"`
+	}
 )
 
 type (
@@ -53,6 +78,10 @@ type (
 		FindByID(ctx context.Context, id uuid.UUID) (result User, err error)
 		// FindByUserName return the user by username
 		FindByUserName(ctx context.Context, username string) (result User, err error)
+		// ExistsByUserName checks if a normalized username exists in PostgreSQL
+		ExistsByUserName(ctx context.Context, username string) (bool, error)
+		// GetAllUsernames fetches all usernames for Bloom filter backfill
+		GetAllUsernames(ctx context.Context) ([]string, error)
 		// Filter filters users by criteria.
 		// limit and offset are used for pagination.
 		// total is the total number of entities.
@@ -73,6 +102,8 @@ type (
 		FindByID(id uuid.UUID) (result User, err error)
 		// FindByUserName return the user by username
 		FindByUserName(username string) (result User, err error)
+		// CheckUsernameAvailability validates and checks availability with Bloom filter
+		CheckUsernameAvailability(rawUsername string) (CheckUsernameAvailabilityOutput, error)
 		// Login return the user by username and password
 		Login(in LoginInput) (result LoginOutput, err error)
 		// UpdateUser updates the user

@@ -10,9 +10,9 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 
-	"github.com/chatApp/internal/domain"
-	"github.com/chatApp/internal/http/swagger"
-	"github.com/chatApp/internal/http/transport"
+	"github.com/Rizwank123/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/http/swagger"
+	"github.com/Rizwank123/chatApp/internal/http/transport"
 )
 
 // SetupMiddleware sets up middleware for the echo server

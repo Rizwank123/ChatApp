@@ -5,7 +5,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/chatApp/internal/pkg/config"
+	"github.com/Rizwank123/chatApp/internal/pkg/config"
 )
 
 const issuer = "Chat-App-Server"

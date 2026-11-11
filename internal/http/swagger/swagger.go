@@ -9,7 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 
-	"github.com/chatApp/internal/pkg/config"
+	"github.com/Rizwank123/chatApp/internal/pkg/config"
 )
 
 const swaggerLoginPage = `<title>Login</title><link crossorigin=anonymous href=https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css integrity=sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u rel=stylesheet><style>.back{background:#e2e2e2;width:100%;position:absolute;top:0;bottom:0}.div-center{width:400px;height:400px;background-color:#fff;position:absolute;left:0;right:0;top:0;bottom:0;margin:auto;max-width:100%;max-height:100%;overflow:auto;padding:1em 2em;border-bottom:2px solid #ccc;display:table}div.content{display:table-cell;vertical-align:middle}</style><div class=back><div class=div-center><div class=content><h3>Login</h3><hr><form action=/authenticate method=POST><div class=form-group><label for=swaggerUsername>Username</label><input class=form-control id=swaggerUsername name=swaggerUsername placeholder=Username></div><div class=form-group><label for=swaggerPassword>Password</label><input class=form-control id=swaggerPassword name=swaggerPassword placeholder=Password type=password></div><button class="btn btn-success"type=submit>Login</button></form></div></div></div>`

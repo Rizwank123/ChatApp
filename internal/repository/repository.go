@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/domain"
 )
 
 func buildQueryForFilter(in domain.FilterInput, q string) (res string, args []interface{}) {
@@ -115,9 +115,7 @@ func loadAssociations[T any](ctx context.Context, db *pgxpool.Pool, filterColumn
 	return result, err
 }
 
-
 const (
-	TblUser = "user"
+	TblUser      = "user"
 	TblPersonnel = "personnel"
-	
 )

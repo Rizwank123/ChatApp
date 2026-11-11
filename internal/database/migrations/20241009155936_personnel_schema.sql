@@ -1,5 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
+DROP TYPE IF EXISTS ACTIVATION_STATUS;
+
 CREATE TYPE ACTIVATION_STATUS AS ENUM ('ACTIVE', 'DISABLED');
 
 DROP TABLE IF EXISTS "public"."personnel";

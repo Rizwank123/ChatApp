@@ -5,7 +5,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/domain"
 )
 
 type personnelServiceImpl struct {

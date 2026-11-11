@@ -6,8 +6,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/labstack/echo/v4"
 
-	"github.com/chatApp/internal/domain"
-	"github.com/chatApp/internal/http/transport"
+	"github.com/Rizwank123/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/http/transport"
 )
 
 type PersonnelController struct {
@@ -80,6 +80,36 @@ func (c PersonnelController) Filter(ctx echo.Context) error {
 	}
 	//  return result
 	return transport.SendPaginationResponse(ctx, http.StatusOK, result, total)
+}
+
+// FindPersonnelByUserID finds personnel by user id.
+//
+//	@Summary		Find personnel by user id
+//	@Description	Find personnel based on the provided user id
+//	@Tags			Personnel
+//	@ID				findPersonnelByUserID
+//	@Accept			json
+//	@Produce		json
+//	@Security		JWT
+//	@Param			Authorization	header		string	true	"Bearer "
+//	@Param			id				path		string	true	"User ID"
+//	@Success		200				{object}	domain.BaseResponse{data=domain.Personnel}
+//	@Failure		400				{object}	domain.InvalidRequestError
+//	@Failure		401				{object}	domain.UnauthorizedError
+//	@Failure		500				{object}	domain.SystemError
+//	@Router			/personnel/user/id [get]
+func (c PersonnelController) FindPersonnelByUserID(ctx echo.Context) error {
+	//  get user id from path
+	userID, err := uuid.FromString(ctx.Param("id"))
+	if err != nil {
+		return err
+	}
+	result, err := c.ps.FindByUserID(userID)
+	if err != nil {
+		return err
+	}
+	//  return result
+	return transport.SendResponse(ctx, http.StatusOK, result)
 }
 
 // CreatePersonnel creates a new personnel entry.

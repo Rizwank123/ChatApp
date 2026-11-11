@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Rizwank123/chatApp/internal/domain"
 	"github.com/gofrs/uuid/v5"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/chatApp/internal/domain"
 )
 
 type pgxUserRepository struct {
@@ -137,15 +137,15 @@ func (r *pgxUserRepository) FindByID(ctx context.Context, id uuid.UUID) (result 
 	return result, err
 }
 
-// FindByUserName implements domain.UserRepository.
+// FindByUserName implements domain.UserRepository with case-insensitive matching.
 func (r *pgxUserRepository) FindByUserName(ctx context.Context, username string) (result domain.User, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	txVal := ctx.Value(TxKey)
 
-	// Retrieve the data
-	q := `SELECT * FROM users WHERE user_name = $1 AND deleted_at IS NULL LIMIT 1`
+	// Retrieve the data case-insensitively
+	q := `SELECT * FROM users WHERE LOWER(TRIM(user_name)) = LOWER(TRIM($1)) AND deleted_at IS NULL LIMIT 1`
 	args := []interface{}{username}
 	var rows pgx.Rows
 	if txVal != nil {
@@ -169,6 +169,47 @@ func (r *pgxUserRepository) FindByUserName(ctx context.Context, username string)
 	}
 
 	return result, err
+}
+
+// ExistsByUserName checks if a user exists case-insensitively.
+func (r *pgxUserRepository) ExistsByUserName(ctx context.Context, username string) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	txVal := ctx.Value(TxKey)
+	q := `SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(TRIM(user_name)) = LOWER(TRIM($1)) AND deleted_at IS NULL)`
+	var exists bool
+	var err error
+	if txVal != nil {
+		tx := txVal.(pgx.Tx)
+		err = tx.QueryRow(ctx, q, username).Scan(&exists)
+	} else {
+		err = r.db.QueryRow(ctx, q, username).Scan(&exists)
+	}
+	return exists, err
+}
+
+// GetAllUsernames fetches all lowercased non-deleted usernames for Bloom filter backfill.
+func (r *pgxUserRepository) GetAllUsernames(ctx context.Context) ([]string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	q := `SELECT LOWER(TRIM(user_name)) FROM users WHERE deleted_at IS NULL`
+	rows, err := r.db.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		list = append(list, u)
+	}
+	return list, nil
 }
 
 // UpdateUser implements domain.UserRepository.

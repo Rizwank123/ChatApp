@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Vibely",
+    "slug": "vibely",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "vibely",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chatapp.vibely"
+    },
+    "android": {
+      "package": "com.chatapp.vibely",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "extra": {
+      "apiUrl": "http://localhost:7700/api/v1",
+      "wsUrl": "ws://localhost:7700/ws"
+    }
+  }
+}

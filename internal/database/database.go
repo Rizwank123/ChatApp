@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/chatApp/internal/pkg/config"
+	"github.com/Rizwank123/chatApp/internal/pkg/config"
 )
 
 // NewDB returns a new database connection pool

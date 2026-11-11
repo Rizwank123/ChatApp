@@ -7,15 +7,22 @@
 package dependency
 
 import (
-	"github.com/chatApp/internal/database"
-	"github.com/chatApp/internal/http/api"
-	"github.com/chatApp/internal/http/controller"
-	"github.com/chatApp/internal/pkg/config"
-	"github.com/chatApp/internal/pkg/security"
-	"github.com/chatApp/internal/pkg/util"
-	"github.com/chatApp/internal/repository"
-	"github.com/chatApp/internal/service"
+	"context"
+	"github.com/Rizwank123/chatApp/internal/broker"
+	"github.com/Rizwank123/chatApp/internal/cache"
+	"github.com/Rizwank123/chatApp/internal/database"
+	"github.com/Rizwank123/chatApp/internal/domain"
+	"github.com/Rizwank123/chatApp/internal/feed"
+	"github.com/Rizwank123/chatApp/internal/http/api"
+	"github.com/Rizwank123/chatApp/internal/http/controller"
+	"github.com/Rizwank123/chatApp/internal/pkg/config"
+	"github.com/Rizwank123/chatApp/internal/pkg/security"
+	"github.com/Rizwank123/chatApp/internal/pkg/util"
+	"github.com/Rizwank123/chatApp/internal/repository"
+	"github.com/Rizwank123/chatApp/internal/service"
+	"github.com/Rizwank123/chatApp/internal/websockets"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -33,16 +40,80 @@ func NewDatabaseConfig(cfg config.ChatApiConfig) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*api.ChatApi, error) {
+func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*ChatAppResult, error) {
+	chatRepository := repository.NewChatRepository(db)
 	personnelRepository := repository.NewPersonnelRepository(db)
+	userRepository := repository.NewUserRepository(db)
+	socialGraphRepository := repository.NewSocialGraphRepository(db)
+	messageBroker := broker.NewInMemoryBroker()
+	hub := websockets.NewHub()
+	chatService := service.NewChatService(chatRepository, personnelRepository, userRepository, socialGraphRepository, messageBroker, hub)
+	chatController := controller.NewChatController(chatService, hub)
 	personnelService := service.NewPersonnelService(personnelRepository)
 	personnelController := controller.NewPersonnelController(personnelService)
+	postRepository := repository.NewPostRepository(db)
+	postService := service.NewPostService(postRepository)
+	postController := controller.NewPostController(postService)
 	appUtil := util.NewAppUtil()
 	manager := security.NewJwtSecurityManager(cfg)
 	transactioner := repository.NewTransactioner(db)
-	userRepository := repository.NewUserRepository(db)
-	userService := service.NewUserService(appUtil, cfg, personnelRepository, manager, transactioner, userRepository)
+	userExistenceChecker := ProvideUserExistenceChecker(userRepository)
+	userService := service.NewUserService(appUtil, cfg, personnelRepository, manager, transactioner, userRepository, userExistenceChecker)
 	userController := controller.NewUserController(userService)
-	chatApi := api.NewChatApi(cfg, personnelController, userController)
-	return chatApi, nil
+	notificationRepository := repository.NewNotificationRepository(db)
+	hybridFeedEngine := ProvideHybridFeedEngine(db, socialGraphRepository, postRepository)
+	distributedHub := _wireDistributedHubValue
+	socialService := service.NewSocialService(socialGraphRepository, postRepository, notificationRepository, hybridFeedEngine, distributedHub)
+	socialController := controller.NewSocialController(socialService)
+	chatApi := ProvideChatApi(cfg, chatController, personnelController, postController, userController, socialController)
+	chatAppResult := &ChatAppResult{
+		API:    chatApi,
+		Hub:    hub,
+		Broker: messageBroker,
+	}
+	return chatAppResult, nil
+}
+
+var (
+	_wireDistributedHubValue = (*websockets.DistributedHub)(nil)
+)
+
+// wire.go:
+
+type ChatAppResult struct {
+	API    *api.ChatApi
+	Hub    *websockets.Hub
+	Broker domain.MessageBroker
+}
+
+func ProvideHybridFeedEngine(
+	db *pgxpool.Pool,
+	socialRepo domain.SocialGraphRepository,
+	postRepo domain.PostRepository,
+) *feed.HybridFeedEngine {
+	return feed.NewHybridFeedEngine(db, nil, socialRepo, postRepo, nil)
+}
+
+func ProvideUserExistenceChecker(ur domain.UserRepository) *cache.UserExistenceChecker {
+	checker := cache.NewUserExistenceChecker(cache.NewMemoryBloomFilter(100000, 0.01), ur.ExistsByUserName)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	usernames, err := ur.GetAllUsernames(ctx)
+	if err == nil {
+		checker.PopulateUsernames(usernames)
+	}
+	return checker
+}
+
+func ProvideChatApi(
+	cfg config.ChatApiConfig,
+	cc controller.ChatController,
+	pr controller.PersonnelController,
+	psc controller.PostController,
+	uc controller.UserController,
+	sc controller.SocialController,
+) *api.ChatApi {
+	chatApi := api.NewChatApi(cfg, cc, pr, psc, uc)
+	chatApi.SetSocialController(sc)
+	return chatApi
 }

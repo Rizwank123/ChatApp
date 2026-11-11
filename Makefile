@@ -1,3 +1,8 @@
+GO := $(shell ls -d $(HOME)/go/pkg/mod/golang.org/toolchain@*/bin/go 2>/dev/null | sort -V | tail -n 1)
+ifeq ($(GO),)
+GO := go
+endif
+
 # Setup the platform
 setup:
 	@echo "Generating env files..."
@@ -10,6 +15,10 @@ migrate:
 	@echo "Running migrations..."
 	sh script/migration.sh
 
+# De-Migrate database
+demigrate:
+	@echo "Running de-migrations..."
+	sh script/migration_down.sh
 # Run pretest script
 pretest:
 	sh scripts/test_helper.sh
@@ -21,8 +30,8 @@ migrate-test:
 
 # Run Tests
 test-cover: migrate-test
-	go test `go list ./... | grep -v cmd` -coverprofile=/tmp/coverage.out -coverpkg=./...
-	go tool cover -html=/tmp/coverage.out
+	$(GO) test `$(GO) list ./... | grep -v cmd` -coverprofile=/tmp/coverage.out -coverpkg=./...
+	$(GO) tool cover -html=/tmp/coverage.out
 
 # Generate API documentation
 doc:
@@ -33,6 +42,10 @@ doc:
 wire:
 	cd internal/dependency/ && wire && cd ../..
 
+seed:
+	@echo "Seeding deterministic demo users and relationships..."
+	$(GO) run cmd/seed/main.go
+
 # Build the platform
 build: migrate doc
 	@echo "Building chatApp-api..."
@@ -42,11 +55,11 @@ build: migrate doc
 clean:
 	@echo "Cleaning up..."
 	rm ./bin/chatApp || true
-	go clean -testcache
+	$(GO) clean -testcache
 
 # Stop the platform
 stop:
-	pkill bhoomi || true
+	pkill -f chatApp || true
 
 # Start the platform
 start: stop build
