@@ -17,14 +17,15 @@ import (
 
 // MinIOConfig holds configuration settings for MinIO / S3 storage.
 type MinIOConfig struct {
-	Provider        string        `mapstructure:"STORAGE_PROVIDER"`
-	Endpoint        string        `mapstructure:"MINIO_ENDPOINT"`
-	AccessKey       string        `mapstructure:"MINIO_ACCESS_KEY"`
-	SecretKey       string        `mapstructure:"MINIO_SECRET_KEY"`
-	Bucket          string        `mapstructure:"MINIO_BUCKET"`
-	UseSSL          bool          `mapstructure:"MINIO_USE_SSL"`
-	Region          string        `mapstructure:"MINIO_REGION"`
-	PublicURL       string        `mapstructure:"MINIO_PUBLIC_URL"`
+	Provider        string `mapstructure:"STORAGE_PROVIDER"`
+	Endpoint        string `mapstructure:"MINIO_ENDPOINT"`
+	AccessKey       string `mapstructure:"MINIO_ACCESS_KEY"`
+	SecretKey       string `mapstructure:"MINIO_SECRET_KEY"`
+	Bucket          string `mapstructure:"MINIO_BUCKET"`
+	UseSSL          bool   `mapstructure:"MINIO_USE_SSL"`
+	Region          string `mapstructure:"MINIO_REGION"`
+	PublicURL       string `mapstructure:"MINIO_PUBLIC_URL"`
+	CreateBucket    bool
 	PresignedExpiry time.Duration `mapstructure:"MINIO_PRESIGNED_EXPIRY"`
 }
 
@@ -52,14 +53,6 @@ func NewMinIOStorageProvider(cfg MinIOConfig) (domain.StorageProvider, error) {
 	if cfg.PresignedExpiry <= 0 {
 		cfg.PresignedExpiry = 15 * time.Minute
 	}
-	if cfg.PublicURL == "" {
-		scheme := "http"
-		if cfg.UseSSL {
-			scheme = "https"
-		}
-		cfg.PublicURL = fmt.Sprintf("%s://%s/%s", scheme, cfg.Endpoint, cfg.Bucket)
-	}
-
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: cfg.UseSSL,
@@ -76,12 +69,20 @@ func NewMinIOStorageProvider(cfg MinIOConfig) (domain.StorageProvider, error) {
 	}
 
 	// Try initializing bucket if possible
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	exists, err := client.BucketExists(ctx, cfg.Bucket)
-	if err == nil && !exists {
-		_ = client.MakeBucket(ctx, cfg.Bucket, minio.MakeBucketOptions{Region: cfg.Region})
+	if err != nil {
+		return nil, fmt.Errorf("check object storage bucket: %w", err)
+	}
+	if !exists {
+		if !cfg.CreateBucket {
+			return nil, fmt.Errorf("object storage bucket %q does not exist", cfg.Bucket)
+		}
+		if err := client.MakeBucket(ctx, cfg.Bucket, minio.MakeBucketOptions{Region: cfg.Region}); err != nil {
+			return nil, fmt.Errorf("create object storage bucket: %w", err)
+		}
 	}
 
 	return p, nil
@@ -222,6 +223,9 @@ func (p *minioStorageProvider) DeleteObject(ctx context.Context, bucket, objectK
 }
 
 func (p *minioStorageProvider) ResolvePublicURL(bucket, objectKey string) string {
+	if strings.TrimSpace(p.config.PublicURL) == "" {
+		return ""
+	}
 	if bucket == "" {
 		bucket = p.config.Bucket
 	}

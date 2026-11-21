@@ -27,7 +27,10 @@ func (r *pgxPersonnelRepository) Filter(ctx context.Context, in domain.FilterInp
 
 	// Retrieve the record count
 	cq := `SELECT COUNT(*) FROM personnel WHERE deleted_at IS NULL`
-	cq, cargs := buildQueryForFilter(in, cq)
+	cq, cargs, err := buildQueryForFilter(in, cq)
+	if err != nil {
+		return nil, 0, err
+	}
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)
 		err = tx.QueryRow(ctx, cq, cargs...).Scan(&total)
@@ -40,10 +43,19 @@ func (r *pgxPersonnelRepository) Filter(ctx context.Context, in domain.FilterInp
 
 	// Retrieve the data
 	q := `SELECT * FROM personnel WHERE deleted_at IS NULL`
-	q, args := buildQueryForFilter(in, q)
-	q = buildSortKeysForFilter(in, q)
+	q, args, err := buildQueryForFilter(in, q)
+	if err != nil {
+		return nil, total, err
+	}
+	q, err = buildSortKeysForFilter(in, q)
+	if err != nil {
+		return nil, total, err
+	}
 	q = applyLimitAndOffset(q, options)
-	q = buildSelectorForQuery(q, options)
+	q, err = buildSelectorForQuery(q, options)
+	if err != nil {
+		return nil, total, err
+	}
 	var rows pgx.Rows
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)
@@ -185,8 +197,8 @@ func (r *pgxPersonnelRepository) Update(ctx context.Context, entity *domain.Pers
 	}
 	txVal := ctx.Value(TxKey)
 
-	q := `UPDATE personnel SET first_name = $1, last_name = $2, gender = $3, email = $4, mobile = $5, address = $6, role = $7, user_id = $8, activation_status = $9, avatar = $10 WHERE id = $11 RETURNING updated_at`
-	args := []interface{}{entity.FirstName, entity.LastName, entity.Gender, entity.Email, entity.Mobile, entity.Address, entity.Role, entity.UserID, entity.ActivationStatus, entity.Avatar, entity.ID}
+	q := `UPDATE personnel SET first_name = $1, last_name = $2, display_name = $3, gender = $4, email = $5, mobile = $6, address = $7, avatar = $8, bio = $9, website = $10, is_private = $11, updated_at = NOW() WHERE id = $12 AND deleted_at IS NULL RETURNING updated_at`
+	args := []interface{}{entity.FirstName, entity.LastName, entity.DisplayName, entity.Gender, entity.Email, entity.Mobile, entity.Address, entity.Avatar, entity.Bio, entity.Website, entity.IsPrivate, entity.ID}
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)
 		err = tx.QueryRow(ctx, q, args...).Scan(&entity.UpdatedAt)

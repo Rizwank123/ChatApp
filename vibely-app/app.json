@@ -6,10 +6,13 @@
     "orientation": "portrait",
     "scheme": "vibely",
     "userInterfaceStyle": "automatic",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chatapp.vibely"
+      "bundleIdentifier": "com.chatapp.vibely",
+      "config": { "usesNonExemptEncryption": false }
     },
     "android": {
       "package": "com.chatapp.vibely",
@@ -21,9 +24,16 @@
       "bundler": "metro",
       "output": "single"
     },
-    "extra": {
-      "apiUrl": "http://localhost:7700/api/v1",
-      "wsUrl": "ws://localhost:7700/ws"
-    }
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Vibely to access photos you choose to share.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ]
   }
 }

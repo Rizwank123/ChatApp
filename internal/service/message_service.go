@@ -343,10 +343,14 @@ func DeliverBrokerMessages(ctx context.Context, broker domain.MessageBroker, hub
 				continue
 			}
 			for _, recipientID := range event.Recipients {
-				hub.Broadcast <- websockets.MessageEnvelope{
+				if err := hub.Publish(ctx, websockets.MessageEnvelope{
 					SenderID:   event.Message.SenderID.String(),
 					ReceiverID: recipientID.String(),
 					Message:    payload,
+				}); err != nil {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
 				}
 			}
 		}

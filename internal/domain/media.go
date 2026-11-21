@@ -116,7 +116,7 @@ type MediaRepository interface {
 type MediaService interface {
 	InitiateUpload(ctx context.Context, ownerID uuid.UUID, input InitiateUploadInput) (*InitiateUploadOutput, error)
 	CompleteUpload(ctx context.Context, ownerID uuid.UUID, uploadID uuid.UUID) (*MediaUpload, error)
-	GetMedia(ctx context.Context, mediaID uuid.UUID) (*PostMedia, error)
+	GetMedia(ctx context.Context, ownerID, mediaID uuid.UUID) (*PostMedia, error)
 	AttachMediaToPost(ctx context.Context, postID, ownerID uuid.UUID, uploadIDs []uuid.UUID) ([]PostMedia, error)
 	ResolveMediaURLs(media *PostMedia)
 	ResolveMediaListURLs(mediaList []PostMedia)

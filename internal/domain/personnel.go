@@ -50,14 +50,16 @@ type (
 
 	// UpdatePersonnelInput define the model for  UpdatePersonnelInput
 	UpdatePersonnelInput struct {
-		FirstName        string           `json:"first_name,omitempty" example:"Mohammad"`
-		LastName         string           `json:"last_name,omitempty" example:"Rizwan"`
-		Gender           Gender           `json:"gender,omitempty" example:"MALE"`
-		Address          Address          `json:"address,omitempty"`
-		Email            string           `json:"email,omitempty" example:"expertkhan@gmail.com"`
-		Role             UserRole         `json:"role,omitempty" example:"ADMIN"`
-		Avatar           string           `json:"avatar,omitempty" example:"https://example.com/avatar.jpg"`
-		ActivationStatus ActivationStatus `json:"activation_status,omitempty" example:"ACTIVATE"`
+		FirstName   string  `json:"first_name,omitempty" example:"Mohammad"`
+		LastName    string  `json:"last_name,omitempty" example:"Rizwan"`
+		DisplayName *string `json:"display_name,omitempty" example:"Rizwan Khan"`
+		Gender      Gender  `json:"gender,omitempty" example:"MALE"`
+		Address     Address `json:"address,omitempty"`
+		Email       string  `json:"email,omitempty" example:"expertkhan@gmail.com"`
+		Avatar      string  `json:"avatar,omitempty" example:"https://example.com/avatar.jpg"`
+		Bio         *string `json:"bio,omitempty"`
+		Website     *string `json:"website,omitempty"`
+		IsPrivate   *bool   `json:"is_private,omitempty"`
 	} // @name  UpdatePersonnelInput
 
 )

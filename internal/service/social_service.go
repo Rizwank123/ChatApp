@@ -8,8 +8,11 @@ import (
 
 	"github.com/Rizwank123/chatApp/internal/domain"
 	"github.com/Rizwank123/chatApp/internal/feed"
-	"github.com/Rizwank123/chatApp/internal/websockets"
 )
+
+type UserEventBroadcaster interface {
+	BroadcastToUser(ctx context.Context, recipientID uuid.UUID, event string, data any) error
+}
 
 // SocialService defines operations for social graph, feed, and notifications.
 type SocialService interface {
@@ -21,6 +24,7 @@ type SocialService interface {
 	GetFollowingList(ctx context.Context, currentPersonnelID, targetPersonnelID uuid.UUID, query string, limit, offset int) ([]domain.FollowUserItem, int64, error)
 	SearchUsers(ctx context.Context, currentPersonnelID uuid.UUID, query string, limit, offset int) ([]domain.UserProfileSearchResult, error)
 	RespondFollowRequest(ctx context.Context, reqID uuid.UUID, recipientID uuid.UUID, accept bool) error
+	GetPendingFollowRequests(ctx context.Context, recipientID uuid.UUID) ([]domain.FollowRequest, error)
 	BlockUser(ctx context.Context, blockerID, blockedID uuid.UUID, reason string) error
 	UnblockUser(ctx context.Context, blockerID, blockedID uuid.UUID) error
 	SavePost(ctx context.Context, personnelID, postID uuid.UUID) error
@@ -38,7 +42,8 @@ type socialService struct {
 	postRepo   domain.PostRepository
 	notifRepo  domain.NotificationRepository
 	feedEngine *feed.HybridFeedEngine
-	wsHub      *websockets.DistributedHub
+	wsHub      UserEventBroadcaster
+	personnel  domain.PersonnelRepository
 }
 
 // NewSocialService constructs SocialService.
@@ -47,15 +52,28 @@ func NewSocialService(
 	postRepo domain.PostRepository,
 	notifRepo domain.NotificationRepository,
 	feedEngine *feed.HybridFeedEngine,
-	wsHub *websockets.DistributedHub,
+	wsHub UserEventBroadcaster,
 ) SocialService {
-	return &socialService{
+	return NewSocialServiceWithPersonnel(socialRepo, postRepo, notifRepo, feedEngine, wsHub, nil)
+}
+
+func NewSocialServiceWithPersonnel(
+	socialRepo domain.SocialGraphRepository,
+	postRepo domain.PostRepository,
+	notifRepo domain.NotificationRepository,
+	feedEngine *feed.HybridFeedEngine,
+	wsHub UserEventBroadcaster,
+	personnelRepo domain.PersonnelRepository,
+) SocialService {
+	result := &socialService{
 		socialRepo: socialRepo,
 		postRepo:   postRepo,
 		notifRepo:  notifRepo,
 		feedEngine: feedEngine,
 		wsHub:      wsHub,
+		personnel:  personnelRepo,
 	}
+	return result
 }
 
 func (s *socialService) FollowUser(ctx context.Context, followerID, followingID uuid.UUID) (string, error) {
@@ -79,6 +97,33 @@ func (s *socialService) FollowUser(ctx context.Context, followerID, followingID 
 	}
 	if alreadyFollowing {
 		return "FOLLOWING", nil
+	}
+	if s.personnel != nil {
+		target, err := s.personnel.FindByID(ctx, followingID)
+		if err != nil {
+			return "", err
+		}
+		if target.IsPrivate {
+			request := &domain.FollowRequest{
+				RequesterID: followerID,
+				RequestedID: followingID,
+				Status:      domain.FollowRequestPending,
+			}
+			if err := s.socialRepo.CreateFollowRequest(ctx, request); err != nil {
+				return "", err
+			}
+			notification := &domain.Notification{
+				RecipientID:      followingID,
+				ActorID:          &followerID,
+				NotificationType: domain.NotificationFollowRequest,
+				Title:            "Follow request",
+				Message:          "A user requested to follow you",
+			}
+			if err := s.notifRepo.Create(ctx, notification); err == nil && s.wsHub != nil {
+				_ = s.wsHub.BroadcastToUser(ctx, followingID, "notification", notification)
+			}
+			return "REQUESTED", nil
+		}
 	}
 
 	// 3. Create follow relation
@@ -141,11 +186,53 @@ func (s *socialService) SearchUsers(ctx context.Context, currentPersonnelID uuid
 }
 
 func (s *socialService) RespondFollowRequest(ctx context.Context, reqID uuid.UUID, recipientID uuid.UUID, accept bool) error {
+	requests, err := s.socialRepo.GetPendingFollowRequests(ctx, recipientID)
+	if err != nil {
+		return err
+	}
+	var request *domain.FollowRequest
+	for i := range requests {
+		if requests[i].ID == reqID {
+			request = &requests[i]
+			break
+		}
+	}
+	if request == nil || request.RequestedID != recipientID {
+		return domain.ForbiddenAccessError{Code: domain.ErrorCodeFORBIDDEN_ACCESS, Message: "follow request is unavailable"}
+	}
 	status := domain.FollowRequestRejected
 	if accept {
 		status = domain.FollowRequestAccepted
+		alreadyFollowing, err := s.socialRepo.IsFollowing(ctx, request.RequesterID, recipientID)
+		if err != nil {
+			return err
+		}
+		if !alreadyFollowing {
+			if err := s.postRepo.CreateFollow(ctx, &domain.Follow{FollowerID: request.RequesterID, FollowingID: recipientID}); err != nil {
+				return err
+			}
+			_ = s.socialRepo.IncrementFollowingCount(ctx, request.RequesterID, 1)
+			_ = s.socialRepo.IncrementFollowerCount(ctx, recipientID, 1)
+		}
 	}
-	return s.socialRepo.UpdateFollowRequestStatus(ctx, reqID, status)
+	if err := s.socialRepo.UpdateFollowRequestStatus(ctx, reqID, status); err != nil {
+		return err
+	}
+	if accept {
+		notification := &domain.Notification{
+			RecipientID:      request.RequesterID,
+			ActorID:          &recipientID,
+			NotificationType: domain.NotificationFollowAccepted,
+			Title:            "Follow request accepted",
+			Message:          "Your follow request was accepted",
+		}
+		_ = s.notifRepo.Create(ctx, notification)
+	}
+	return nil
+}
+
+func (s *socialService) GetPendingFollowRequests(ctx context.Context, recipientID uuid.UUID) ([]domain.FollowRequest, error) {
+	return s.socialRepo.GetPendingFollowRequests(ctx, recipientID)
 }
 
 func (s *socialService) BlockUser(ctx context.Context, blockerID, blockedID uuid.UUID, reason string) error {
@@ -160,6 +247,9 @@ func (s *socialService) UnblockUser(ctx context.Context, blockerID, blockedID uu
 }
 
 func (s *socialService) SavePost(ctx context.Context, personnelID, postID uuid.UUID) error {
+	if _, err := s.postRepo.FindPostByID(ctx, postID, personnelID); err != nil {
+		return err
+	}
 	return s.socialRepo.SavePost(ctx, personnelID, postID)
 }
 

@@ -129,11 +129,10 @@ export type MediaItem = {
 
 export type InitiateUploadResponse = {
   upload_id: UUID;
-  presigned_url: string;
+  upload_url: string;
   object_key: string;
   bucket: string;
-  media_type: "IMAGE" | "VIDEO";
-  cdn_url: string;
+  expires_at: string;
 };
 
 export type UserSearchResult = {

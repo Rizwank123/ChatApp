@@ -135,7 +135,7 @@ When a user requests their feed (`GET /api/v1/posts/feed?cursor=...&limit=50`):
 
 ### Comparison Matrix
 
-| Criteria | Bloom Filter | Cuckoo Filter (RedisBloom `CF.*`) | Winner & Recommendation |
+| Criteria | Bloom Filter | Cuckoo Filter (Redis `CF.*`) | Winner & Recommendation |
 | :--- | :--- | :--- | :--- |
 | **Deletion Support** | ❌ Impossible (standard Bloom); requires counting Bloom filter (4x memory) | ✅ **Native item deletion (`CF.DEL`)** via fingerprint swapping | **Cuckoo Filter** (Critical for social unlikes, deletes, post hiding) |
 | **Lookup Performance** | Checks $k$ hash positions across bit array | Checks at most 2 buckets (hash + alternate bucket) | **Cuckoo Filter** (Higher cache locality, faster lookups) |
@@ -144,7 +144,7 @@ When a user requests their feed (`GET /api/v1/posts/feed?cursor=...&limit=50`):
 | **Social Media Fit** | Static datasets (e.g. "ever signed up") | Dynamic feeds ("hide post", "unseen", "mark read") | **Cuckoo Filter** |
 
 ### Decision & Usage in ChatApp
-We choose **Cuckoo Filter** (`redis-stack` / RedisBloom) as the primary probabilistic filter for dynamic features, with Bloom Filter for append-only static checks:
+We choose **Cuckoo Filter** (`CF.*`) as the primary probabilistic filter for dynamic features, with Bloom Filter (`BF.*`) for append-only static checks. The development Compose stack uses Redis 8, where these filter commands are built into Redis:
 1. **Feed Deduplication & Seen Posts (`CF.ADD seen:{user_id} {post_id}`):** When a user scrolls past a post or dismisses it, it is inserted into their Cuckoo Filter. If a post is deleted by author or hidden by user, `CF.DEL` can cleanly remove it without rebuilding the filter.
 2. **Follow Relationship Fast Rejection:** Rapidly filter out non-followers before querying PostgreSQL or Redis Sets.
 3. **Username Availability Bloom Filter (`BF.ADD usernames {username}`):** Append-only check to fast-fail username registrations if already taken.

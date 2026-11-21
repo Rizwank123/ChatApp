@@ -84,6 +84,13 @@ func (r *pgxPostRepository) FindPostByID(ctx context.Context, id uuid.UUID, view
 		JOIN personnel per ON p.personnel_id = per.id
 		JOIN users u ON per.user_id = u.id
 		WHERE p.id = $1 AND p.deleted_at IS NULL
+		  AND (p.personnel_id = $2 OR (per.deleted_at IS NULL AND per.activation_status = 'ACTIVE' AND u.deleted_at IS NULL))
+		  AND (p.personnel_id = $2 OR ((p.status = 'PUBLISHED' OR p.status IS NULL)
+		       AND (p.is_archived = false OR p.is_archived IS NULL)
+		       AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		       AND (NOT COALESCE(per.is_private, false)
+		            OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $2 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $2 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $2))
 	`
 
 	err = r.db.QueryRow(ctx, query, id, vID).Scan(
@@ -183,7 +190,14 @@ func (r *pgxPostRepository) FindUserPosts(ctx context.Context, personnelID uuid.
 		FROM posts p
 		JOIN personnel per ON p.personnel_id = per.id
 		JOIN users u ON per.user_id = u.id
-		WHERE p.personnel_id = $1 AND p.deleted_at IS NULL
+		WHERE (u.id = $1 OR p.personnel_id = $1) AND p.deleted_at IS NULL
+		  AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE' AND u.deleted_at IS NULL
+		  AND (p.personnel_id = $4 OR ((p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		       AND (NOT COALESCE(per.is_private, false)
+		            OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $4 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))))
+		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+		  AND (p.is_archived = false OR p.is_archived IS NULL)
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $4 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $4))
 		ORDER BY p.created_at DESC
 		LIMIT $2 OFFSET $3
 	`
@@ -214,8 +228,18 @@ func (r *pgxPostRepository) FindUserPosts(ctx context.Context, personnelID uuid.
 		result = append(result, p)
 	}
 
-	countQuery := `SELECT COUNT(*) FROM posts WHERE personnel_id = $1 AND deleted_at IS NULL`
-	err = r.db.QueryRow(ctx, countQuery, personnelID).Scan(&total)
+	countQuery := `SELECT COUNT(*) FROM posts p
+		JOIN personnel per ON per.id = p.personnel_id
+		JOIN users u ON u.id = per.user_id
+		WHERE (u.id = $1 OR p.personnel_id = $1) AND p.deleted_at IS NULL
+		  AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE' AND u.deleted_at IS NULL
+		  AND (p.personnel_id = $2 OR ((p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		       AND (NOT COALESCE(per.is_private, false)
+		            OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $2 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))))
+		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+		  AND (p.is_archived = false OR p.is_archived IS NULL)
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $2 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $2))`
+	err = r.db.QueryRow(ctx, countQuery, personnelID, vID).Scan(&total)
 	return result, total, err
 }
 
@@ -249,9 +273,13 @@ func (r *pgxPostRepository) FindFeedPosts(ctx context.Context, personnelID uuid.
 		JOIN users u ON per.user_id = u.id
 		LEFT JOIN follows f ON p.personnel_id = f.following_id AND f.follower_id = $1 AND f.deleted_at IS NULL
 		WHERE (f.follower_id IS NOT NULL OR p.personnel_id = $1)
+		  AND (p.personnel_id = $1 OR ((p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		       AND (NOT COALESCE(per.is_private, false) OR f.follower_id IS NOT NULL)))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))
 		  AND p.deleted_at IS NULL
 		  AND (p.status IS NULL OR p.status = 'PUBLISHED')
 		  AND (p.is_archived IS NULL OR p.is_archived = false)
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
 		ORDER BY p.created_at DESC
 		LIMIT $2 OFFSET $3
 	`
@@ -281,13 +309,22 @@ func (r *pgxPostRepository) FindFeedPosts(ctx context.Context, personnelID uuid.
 	countQuery := `
 		SELECT COUNT(DISTINCT p.id)
 		FROM posts p
+		JOIN personnel per ON per.id = p.personnel_id
+		JOIN users u ON u.id = per.user_id
 		LEFT JOIN follows f ON p.personnel_id = f.following_id AND f.follower_id = $1 AND f.deleted_at IS NULL
 		WHERE (f.follower_id IS NOT NULL OR p.personnel_id = $1)
+		  AND (p.personnel_id = $1 OR ((p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		       AND (NOT COALESCE(per.is_private, false)
+		            OR f.follower_id IS NOT NULL)))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))
 		  AND p.deleted_at IS NULL
 		  AND (p.status IS NULL OR p.status = 'PUBLISHED')
 		  AND (p.is_archived IS NULL OR p.is_archived = false)
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
 	`
-	_ = r.db.QueryRow(ctx, countQuery, personnelID).Scan(&total)
+	if err := r.db.QueryRow(ctx, countQuery, personnelID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 
 	// If user feed is empty (e.g. brand new user following 0 people with 0 posts), gracefully fall back to latest public posts
 	if len(result) == 0 && options.Offset == 0 {
@@ -331,6 +368,10 @@ func (r *pgxPostRepository) FindPublicPosts(ctx context.Context, options domain.
 		JOIN users u ON per.user_id = u.id
 		WHERE p.deleted_at IS NULL
 		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (NOT COALESCE(per.is_private, false)
+		       OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $3 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $3 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $3))
 		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
 		  AND (p.is_archived = false OR p.is_archived IS NULL)
 		ORDER BY p.created_at DESC
@@ -362,12 +403,20 @@ func (r *pgxPostRepository) FindPublicPosts(ctx context.Context, options domain.
 	countQuery := `
 		SELECT COUNT(*)
 		FROM posts p
+		JOIN personnel per ON p.personnel_id = per.id
+		JOIN users u ON u.id = per.user_id
 		WHERE p.deleted_at IS NULL
 		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (NOT COALESCE(per.is_private, false)
+		       OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $1 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+		  AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE' AND u.deleted_at IS NULL
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))
 		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
 		  AND (p.is_archived = false OR p.is_archived IS NULL)
 	`
-	_ = r.db.QueryRow(ctx, countQuery).Scan(&total)
+	if err := r.db.QueryRow(ctx, countQuery, vID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	return result, total, nil
 }
 

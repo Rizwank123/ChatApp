@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import React, {
   createContext,
   useCallback,
@@ -49,15 +50,25 @@ function isSessionValid(session?: AppUser | null): session is AppUser {
 }
 
 function getStoredSessionSync(): AppUser | undefined {
-  if (typeof window !== "undefined" && window.localStorage) {
+	if (Platform.OS === "web" && typeof window !== "undefined" && window.sessionStorage) {
     try {
-      const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+			const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as AppUser;
         if (isSessionValid(parsed)) {
           return parsed;
         }
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+				window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+			}
+			// Migrate the old persistent web token store into this tab's session.
+			const legacy = window.localStorage.getItem(SESSION_STORAGE_KEY);
+			if (legacy) {
+				window.localStorage.removeItem(SESSION_STORAGE_KEY);
+				const parsed = JSON.parse(legacy) as AppUser;
+				if (isSessionValid(parsed)) {
+					window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(parsed));
+					return parsed;
+				}
       }
     } catch {
       // ignore JSON or localStorage errors
@@ -79,15 +90,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<Toast>();
 
   useEffect(() => {
+	if (Platform.OS === "web") return;
     let isMounted = true;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+		let raw = await SecureStore.getItemAsync(SESSION_STORAGE_KEY);
+		if (!raw) {
+			// One-time migration from the previous unencrypted native session store.
+			raw = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+			if (raw) {
+				try {
+					await SecureStore.setItemAsync(SESSION_STORAGE_KEY, raw, {
+						keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+					});
+					await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+				} catch {
+					// Keep the session in memory for this run if the secure store is unavailable.
+				}
+			}
+		}
         if (raw && isMounted) {
           const parsed = JSON.parse(raw) as AppUser;
           if (isSessionValid(parsed)) {
             setSessionState(parsed);
           } else {
+            await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
             await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
             if (typeof window !== "undefined" && window.localStorage) {
               window.localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -111,25 +138,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setSession = useCallback((nextSession?: AppUser) => {
     setSessionState(nextSession);
-    if (nextSession) {
-      AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession)).catch(() => {});
-      if (typeof window !== "undefined" && window.localStorage) {
+	if (Platform.OS === "web") {
+		if (typeof window !== "undefined" && window.sessionStorage) {
         try {
-          window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+				if (nextSession) {
+					window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+				} else {
+					window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+				}
+				window.localStorage.removeItem(SESSION_STORAGE_KEY);
         } catch {
-          // ignore
         }
       }
-    } else {
-      AsyncStorage.removeItem(SESSION_STORAGE_KEY).catch(() => {});
-      if (typeof window !== "undefined" && window.localStorage) {
-        try {
-          window.localStorage.removeItem(SESSION_STORAGE_KEY);
-        } catch {
-          // ignore
-        }
-      }
+		return;
     }
+	const storageOperation = nextSession
+		? SecureStore.setItemAsync(SESSION_STORAGE_KEY, JSON.stringify(nextSession), {
+				keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+			})
+		: SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
+	void storageOperation.then(() => AsyncStorage.removeItem(SESSION_STORAGE_KEY)).catch(() => {});
   }, []);
 
   const upsertPost = useCallback((post: Post) => {

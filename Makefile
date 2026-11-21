@@ -6,8 +6,8 @@ endif
 # Setup the platform
 setup:
 	@echo "Generating env files..."
-	cp sample.env .env
-	cp sample.env test.env
+	cp .env.example .env
+	cp .env.exampletest.env
 	@echo ".env & test.env created. Now, update values in them"
 
 # Migrate database

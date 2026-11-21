@@ -65,7 +65,10 @@ func (r *pgxUserRepository) Filter(ctx context.Context, in domain.FilterInput, o
 
 	// Retrieve the record count
 	cq := `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`
-	cq, cargs := buildQueryForFilter(in, cq)
+	cq, cargs, err := buildQueryForFilter(in, cq)
+	if err != nil {
+		return nil, 0, err
+	}
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)
 		err = tx.QueryRow(ctx, cq, cargs...).Scan(&total)
@@ -78,10 +81,19 @@ func (r *pgxUserRepository) Filter(ctx context.Context, in domain.FilterInput, o
 
 	// Retrieve the data
 	q := `SELECT * FROM users WHERE deleted_at IS NULL`
-	q, args := buildQueryForFilter(in, q)
-	q = buildSortKeysForFilter(in, q)
+	q, args, err := buildQueryForFilter(in, q)
+	if err != nil {
+		return nil, total, err
+	}
+	q, err = buildSortKeysForFilter(in, q)
+	if err != nil {
+		return nil, total, err
+	}
 	q = applyLimitAndOffset(q, options)
-	q = buildSelectorForQuery(q, options)
+	q, err = buildSelectorForQuery(q, options)
+	if err != nil {
+		return nil, total, err
+	}
 	var rows pgx.Rows
 	if txVal != nil {
 		tx := txVal.(pgx.Tx)

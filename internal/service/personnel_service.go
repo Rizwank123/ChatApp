@@ -69,11 +69,20 @@ func (s *personnelServiceImpl) Update(id uuid.UUID, in domain.UpdatePersonnelInp
 		result.Gender = &in.Gender
 
 	}
-	if in.Role != "" {
-		result.Role = in.Role
-	}
 	if in.Avatar != "" {
 		result.Avatar = &in.Avatar
+	}
+	if in.DisplayName != nil {
+		result.DisplayName = in.DisplayName
+	}
+	if in.Bio != nil {
+		result.Bio = in.Bio
+	}
+	if in.Website != nil {
+		result.Website = in.Website
+	}
+	if in.IsPrivate != nil {
+		result.IsPrivate = *in.IsPrivate
 	}
 	if in.Address.City != "" {
 		result.Address.City = in.Address.City
@@ -89,9 +98,6 @@ func (s *personnelServiceImpl) Update(id uuid.UUID, in domain.UpdatePersonnelInp
 	}
 	if in.Address.Pincode != "" {
 		result.Address.Pincode = in.Address.Pincode
-	}
-	if in.ActivationStatus != "" {
-		result.ActivationStatus = in.ActivationStatus
 	}
 	err = s.pr.Update(context.Background(), &result)
 	if err != nil {

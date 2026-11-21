@@ -1,169 +1,135 @@
-version: "3.8"
-
-networks:
-  webnet:
-    driver: bridge
-
-volumes:
-  pgdata:
-  redisdata:
-  redpandadata:
-  miniodata:
+name: chatapp
 
 services:
-  chatappdb:
-    container_name: chatappdb
-    image: postgres:15-alpine
-    networks:
-      - webnet
-    ports:
-      - "${DB_PORT:-5432}:5432"
+  database:
+    image: postgres:16-alpine
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_USER: ${DB_USERNAME:-chatapp}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_DATABASE_NAME:-chatapp}
-      PGDATA: /var/lib/postgresql/data
-    env_file:
-      - .env
+    ports:
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-chatapp} -d ${DB_DATABASE_NAME:-chatapp}"]
       interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   redis:
-    container_name: chatapp_redis
-    image: redis/redis-stack-server:latest
-    networks:
-      - webnet
+    image: redis:8.8.3-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     ports:
-      - "6379:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
 
-  redpanda:
-    container_name: chatapp_kafka
-    image: docker.redpanda.com/redpandadata/redpanda:latest
-    networks:
-      - webnet
-    command:
-      - redpanda start
-      - --smp 1
-      - --memory 512M
-      - --reserve-memory 0M
-      - --overprovisioned
-      - --node-id 0
-      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
-      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
-    ports:
-      - "9092:9092"
-      - "9644:9644"
-    volumes:
-      - redpandadata:/var/lib/redpanda/data
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -i healthy || exit 0"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  minio:
-    container_name: chatapp_minio
-    image: minio/minio:latest
-    networks:
-      - webnet
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+  objectstore:
+    image: chrislusf/seaweedfs:4.53
+    command: ["mini", "-dir=/data", "-ip.bind=0.0.0.0"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-    volumes:
-      - miniodata:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  minio-init:
-    container_name: chatapp_minio_init
-    image: minio/mc:latest
-    networks:
-      - webnet
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set local http://minio:9000 $${MINIO_ACCESS_KEY:-minioadmin} $${MINIO_SECRET_KEY:-minioadmin};
-      /usr/bin/mc mb --ignore-existing local/$${MINIO_BUCKET:-chatapp-media};
-      /usr/bin/mc anonymous set download local/$${MINIO_BUCKET:-chatapp-media};
-      exit 0;
-      "
-
-  chatappapi:
-    container_name: chatappapi
-    networks:
-      - webnet
-    expose:
-      - ${APP_PORT:-8080}
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-localdev}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+      S3_BUCKET: ${MINIO_BUCKET:-chatapp-media}
     ports:
-      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+      - "${S3_BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-8333}:8333"
     volumes:
-      - .:/usr/src/app
-      - /usr/src/app/go.mod
-      - /usr/src/app/go.sum
+      - s3data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9333/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
     build:
       context: .
-      target: development
+      dockerfile: Dockerfile
+      target: migrator
+    command: >-
+      goose -dir /migrations postgres
+      "host=database port=5432 user=$${DB_USERNAME} password=$${DB_PASSWORD} dbname=$${DB_DATABASE_NAME} sslmode=$${DB_SSL_MODE}"
+      up
     environment:
-      DB_HOST: chatappdb
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_USERNAME: ${DB_USERNAME:-chatapp}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       DB_DATABASE_NAME: ${DB_DATABASE_NAME:-chatapp}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      KAFKA_BROKERS: redpanda:29092
-      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-minio}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-chatapp-media}
-      MINIO_USE_SSL: "false"
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000/chatapp-media}
-    env_file:
-      - .env
+      DB_SSL_MODE: ${DB_SSL_MODE:-disable}
+      DB_SSL_ROOT_CERT: ${DB_SSL_ROOT_CERT:-}
     depends_on:
-      chatappdb:
+      database:
         condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: 8080
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-chatapp}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-chatapp}
+      DB_SSL_MODE: ${DB_SSL_MODE:-disable}
+      DB_SSL_ROOT_CERT: ${DB_SSL_ROOT_CERT:-}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      REDIS_DB: ${REDIS_DB:-0}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
+      AUTH_EXPIRY_PERIOD: ${AUTH_EXPIRY_PERIOD:-24}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      STORAGE_PROVIDER: minio
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-host.docker.internal:8333}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-localdev}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-chatapp-media}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
-      minio:
+      objectstore:
         condition: service_healthy
     restart: unless-stopped
 
-  nginx:
-    container_name: nginx
-    image: nginx:latest
-    networks:
-      - webnet
+  edge:
+    image: nginx:1.30.6-alpine
+    profiles: ["edge"]
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./.certs:/etc/nginx/certs
-      - ./config/nginx.conf:/etc/nginx/nginx.conf
-      - ./config/sites-available:/etc/nginx/sites-available
-      - ./config/sites-enabled:/etc/nginx/sites-enabled
+      - ./.certs:/etc/nginx/certs:ro
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/chatapp.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - chatappapi
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:

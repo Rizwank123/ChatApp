@@ -70,18 +70,20 @@ func (s *postService) CreatePost(input domain.CreatePostInput, userID uuid.UUID)
 	// 1. Attach media from media_uploads if provided
 	if len(input.MediaIDs) > 0 && s.mediaService != nil {
 		attachedMedia, err := s.mediaService.AttachMediaToPost(ctx, post.ID, userID, input.MediaIDs)
-		if err == nil {
-			post.Media = attachedMedia
-			if len(post.MediaURL) == 0 {
-				for _, m := range attachedMedia {
-					post.MediaURL = append(post.MediaURL, m.URL)
-				}
+		if err != nil {
+			_ = s.repo.DeletePost(ctx, post.ID)
+			return nil, fmt.Errorf("attach uploaded media to post: %w", err)
+		}
+		post.Media = attachedMedia
+		if len(post.MediaURL) == 0 {
+			for _, m := range attachedMedia {
+				post.MediaURL = append(post.MediaURL, m.URL)
 			}
-			// Trigger async background processing for dimensions & thumbnails
-			if s.mediaProcessor != nil {
-				for _, m := range attachedMedia {
-					s.mediaProcessor.Enqueue(m.ID)
-				}
+		}
+		// Trigger async background processing for dimensions & thumbnails
+		if s.mediaProcessor != nil {
+			for _, m := range attachedMedia {
+				s.mediaProcessor.Enqueue(m.ID)
 			}
 		}
 	}

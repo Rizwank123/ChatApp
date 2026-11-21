@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 
 import { api } from "../api/client";
 import { useApp } from "../state/AppContext";
@@ -26,21 +27,10 @@ type UploadedMedia = {
   isUploaded?: boolean;
 };
 
-const PRESET_IMAGES = [
-  { label: "🌆 City Night", url: "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=800&q=80" },
-  { label: "☕ Coffee & Book", url: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80" },
-  { label: "🌄 Sunset Coast", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80" },
-  { label: "💻 Cyber Setup", url: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80" },
-  { label: "🎨 Modern Art", url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80" },
-];
-
 export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
   const { session, showToast } = useApp();
   const [caption, setCaption] = useState("");
-  const [mediaList, setMediaList] = useState<UploadedMedia[]>([
-    { url: PRESET_IMAGES[0].url },
-  ]);
-  const [customUrl, setCustomUrl] = useState("");
+  const [mediaList, setMediaList] = useState<UploadedMedia[]>([]);
   const [location, setLocation] = useState("");
   const [hashtags, setHashtags] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,58 +43,55 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
     return matches ? matches.map((m) => m.replace(/^#/, "").toLowerCase()) : [];
   };
 
-  const addMediaUrl = (urlToAdd: string) => {
-    if (!urlToAdd.trim()) return;
-    const clean = urlToAdd.trim();
-    if (mediaList.some((m) => m.url === clean)) return;
-    setMediaList((prev) => [...prev, { url: clean }]);
-    setCustomUrl("");
-  };
-
   const removeMedia = (index: number) => {
     setMediaList((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleMinioUploadDemo = async () => {
+  const chooseAndUploadImages = async () => {
     if (!session) return;
+    if (mediaList.length >= 10) {
+      showToast({ message: "A post can contain up to 10 photos", kind: "info" });
+      return;
+    }
     setUploading(true);
     try {
-      const fileName = `vibely_${Date.now()}.jpg`;
-      const mimeType = "image/jpeg";
-      const sizeBytes = 1024 * 1024;
+      const selection = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        selectionLimit: 10 - mediaList.length,
+        quality: 1,
+      });
+      if (selection.canceled) return;
 
-      const initRes = await api.initiateUpload(
-        session.token,
-        fileName,
-        mimeType,
-        sizeBytes,
-        "POST_IMAGE",
-      );
+      for (const asset of selection.assets) {
+        const sourceResponse = await fetch(asset.uri);
+        if (!sourceResponse.ok) throw new Error("Could not read the selected photo");
+        const blob = await sourceResponse.blob();
+        const mimeType = asset.mimeType || blob.type || "image/jpeg";
+        const nameExtension = asset.fileName?.includes(".") ? asset.fileName.split(".").pop()?.toLowerCase() : undefined;
+        const extension = nameExtension ||
+		  ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic" } as Record<string, string>)[mimeType];
+        if (!extension) throw new Error("This photo format is not supported");
+        if (blob.size <= 0 || blob.size > 30 * 1024 * 1024) {
+          throw new Error("Each photo must be smaller than 30 MB");
+        }
 
-      const upload = initRes.data;
-      await api.completeUpload(session.token, upload.upload_id);
+        const fileName = asset.fileName || `vibely_${Date.now()}.${extension}`;
+        const initRes = await api.initiateUpload(session.token, fileName, mimeType, blob.size, "POST_IMAGE");
+        await api.uploadFileToUrl(initRes.data.upload_url, blob, mimeType);
+        await api.completeUpload(session.token, initRes.data.upload_id);
+        setMediaList((previous) => [
+          ...previous,
+          { id: initRes.data.upload_id, url: asset.uri, isUploaded: true },
+        ]);
+      }
 
-      setMediaList((prev) => [
-        ...prev,
-        {
-          id: upload.upload_id,
-          url:
-            upload.cdn_url ||
-            "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          isUploaded: true,
-        },
-      ]);
-
-      showToast({ message: "Photo attached", kind: "success" });
-    } catch {
-      // Fallback
-      setMediaList((prev) => [
-        ...prev,
-        {
-          url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-        },
-      ]);
-      showToast({ message: "Photo attached", kind: "success" });
+      showToast({ message: "Photos uploaded", kind: "success" });
+    } catch (error) {
+      showToast({
+        message: error instanceof Error ? error.message : "Photo upload failed",
+        kind: "error",
+      });
     } finally {
       setUploading(false);
     }
@@ -126,14 +113,14 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
       const inlineTags = extractHashtags(caption);
       const allTags = Array.from(new Set([...explicitTags, ...inlineTags]));
 
-      const mediaUrls = mediaList.map((m) => m.url);
       const mediaIds = mediaList
         .filter((m) => m.id)
         .map((m) => m.id as string);
+      const mediaUrls = mediaList.filter((m) => !m.id).map((m) => m.url);
 
       await api.createPost(session.token, {
         caption: caption.trim(),
-        media_url: mediaUrls.length > 0 ? mediaUrls : [PRESET_IMAGES[0].url],
+        media_url: mediaUrls.length ? mediaUrls : undefined,
         media_ids: mediaIds.length > 0 ? mediaIds : undefined,
         location: location.trim() || undefined,
         visibility: "PUBLIC",
@@ -156,7 +143,7 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
     }
   }
 
-  const selectedImage = mediaList[0]?.url || PRESET_IMAGES[0].url;
+  const selectedImage = mediaList[0]?.url;
 
   return (
     <KeyboardAvoidingView
@@ -169,7 +156,7 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
 
         <Pressable
           onPress={create}
-          disabled={busy}
+          disabled={busy || uploading}
           style={styles.shareBtn}
           hitSlop={10}
         >
@@ -184,7 +171,13 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Caption & Thumbnail Row (Iconic Instagram style) */}
         <View style={styles.captionRow}>
-          <Image source={{ uri: selectedImage }} style={styles.thumbImage} resizeMode="cover" />
+          {selectedImage ? (
+            <Image source={{ uri: selectedImage }} style={styles.thumbImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.thumbImage, styles.thumbPlaceholder]}>
+              <Ionicons name="image-outline" size={24} color={colors.textDim} />
+            </View>
+          )}
           <TextInput
             placeholder="Write a caption..."
             placeholderTextColor={colors.textDim}
@@ -257,7 +250,7 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
             ))}
 
             <Pressable
-              onPress={handleMinioUploadDemo}
+              onPress={chooseAndUploadImages}
               disabled={uploading}
               style={styles.addMediaCard}
             >
@@ -266,44 +259,12 @@ export function ComposerScreen({ onCreated }: { onCreated: () => void }) {
               ) : (
                 <>
                   <Ionicons name="add" size={28} color={colors.textDim} />
-                  <Text style={styles.addMediaText}>Add photo</Text>
+                  <Text style={styles.addMediaText}>Choose photos</Text>
                 </>
               )}
             </Pressable>
           </ScrollView>
 
-          {/* Preset Options */}
-          <Text style={styles.subSectionTitle}>Presets</Text>
-          <View style={styles.presetsWrap}>
-            {PRESET_IMAGES.map((preset) => (
-              <Pressable
-                key={preset.label}
-                onPress={() => addMediaUrl(preset.url)}
-                style={styles.presetChip}
-              >
-                <Text style={styles.presetChipText}>{preset.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Custom URL Input */}
-          <View style={styles.customUrlRow}>
-            <TextInput
-              placeholder="Or paste image URL..."
-              placeholderTextColor={colors.textDim}
-              style={styles.customUrlInput}
-              value={customUrl}
-              onChangeText={setCustomUrl}
-              autoCapitalize="none"
-            />
-            <Pressable
-              onPress={() => addMediaUrl(customUrl)}
-              disabled={!customUrl.trim()}
-              style={[styles.addUrlBtn, !customUrl.trim() && styles.disabledBtn]}
-            >
-              <Text style={styles.addUrlBtnText}>Attach</Text>
-            </Pressable>
-          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -353,6 +314,10 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 6,
     backgroundColor: colors.cardSubtle,
+  },
+  thumbPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   captionInput: {
     flex: 1,

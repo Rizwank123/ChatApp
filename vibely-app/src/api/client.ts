@@ -27,10 +27,20 @@ import type {
 } from "./types";
 
 const defaultHost = Platform.OS === "android" ? "192.168.1.36" : "localhost";
-const baseUrl =
-  process.env.EXPO_PUBLIC_API_URL ?? `http://${defaultHost}:7700/api/v1`;
-const socketUrl =
-  process.env.EXPO_PUBLIC_WS_URL ?? `ws://${defaultHost}:7700/ws`;
+const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
+const isProductionBuild = process.env.NODE_ENV === "production";
+if (isProductionBuild && !configuredApiUrl) {
+	throw new Error("EXPO_PUBLIC_API_URL must be set for a production build");
+}
+const baseUrl = configuredApiUrl ?? `http://${defaultHost}:7700/api/v1`;
+const derivedSocketUrl = baseUrl
+	.replace(/^https:/, "wss:")
+	.replace(/^http:/, "ws:")
+	.replace(/\/api\/v1$/, "/ws");
+const socketUrl = process.env.EXPO_PUBLIC_WS_URL ?? derivedSocketUrl;
+if (isProductionBuild && (!baseUrl.startsWith("https://") || !socketUrl.startsWith("wss://"))) {
+	throw new Error("Production API and WebSocket endpoints must use HTTPS and WSS");
+}
 
 type RequestOptions = {
   token?: string;
@@ -92,6 +102,12 @@ export const api = {
     return request<ApiResponse<LoginOutput>>("/users/login", {
       method: "POST",
       body: input,
+    });
+  },
+  async createWebSocketTicket(token: string) {
+    return request<ApiResponse<{ ticket: string; expires_at: string }>>("/ws-ticket", {
+      token,
+      method: "POST",
     });
   },
   async getFeed(token: string, page = 0, size = 20) {
@@ -364,10 +380,10 @@ export const api = {
       token,
       method: "POST",
       body: {
-        file_name: fileName,
+        filename: fileName,
         mime_type: mimeType,
-        size_bytes: sizeBytes,
-        purpose,
+        file_size: sizeBytes,
+        media_type: purpose === "POST_VIDEO" ? "VIDEO" : "IMAGE",
       },
     });
   },

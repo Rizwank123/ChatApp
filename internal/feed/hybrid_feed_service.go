@@ -151,7 +151,7 @@ func (e *HybridFeedEngine) GetUserFeed(ctx context.Context, userID uuid.UUID, cu
 	if e.socialRepo != nil {
 		celebrityIDs, err := e.socialRepo.GetFollowingCelebrityIDs(ctx, userID, e.config.CelebrityThreshold)
 		if err == nil && len(celebrityIDs) > 0 {
-			celebPosts, err := e.getRecentCelebrityPosts(ctx, celebrityIDs, maxScore, limit)
+			celebPosts, err := e.getRecentCelebrityPosts(ctx, userID, celebrityIDs, maxScore, limit)
 			if err == nil {
 				for _, cp := range celebPosts {
 					postScores[cp.ID] = float64(cp.CreatedAt.UnixMilli())
@@ -196,7 +196,7 @@ func (e *HybridFeedEngine) GetUserFeed(ctx context.Context, userID uuid.UUID, cu
 		candidateIDs = append(candidateIDs, id)
 	}
 
-	posts, err := e.hydratePosts(ctx, candidateIDs)
+	posts, err := e.hydratePosts(ctx, candidateIDs, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hydrate posts: %w", err)
 	}
@@ -212,8 +212,11 @@ func (e *HybridFeedEngine) GetUserFeed(ctx context.Context, userID uuid.UUID, cu
 	for _, p := range posts {
 		if e.redis != nil {
 			// Check Cuckoo Filter
-			seen, _ := e.redis.CuckooExists(ctx, cuckooKey, p.ID.String())
-			if !seen {
+			seen, err := e.redis.CuckooExists(ctx, cuckooKey, p.ID.String())
+			if err == nil && seen {
+				continue
+			}
+			if err == nil {
 				// Mark as seen for future fetches
 				_ = e.redis.CuckooAdd(ctx, cuckooKey, p.ID.String())
 			}
@@ -244,7 +247,7 @@ func (e *HybridFeedEngine) GetUserFeed(ctx context.Context, userID uuid.UUID, cu
 	}, nil
 }
 
-func (e *HybridFeedEngine) getRecentCelebrityPosts(ctx context.Context, celebrityIDs []uuid.UUID, maxScore float64, limit int64) ([]domain.Post, error) {
+func (e *HybridFeedEngine) getRecentCelebrityPosts(ctx context.Context, viewerID uuid.UUID, celebrityIDs []uuid.UUID, maxScore float64, limit int64) ([]domain.Post, error) {
 	q := `SELECT p.id, p.personnel_id, p.caption, p.media_url, p.location, p.visibility,
 	             COALESCE(p.status, 'PUBLISHED') as status,
 	             COALESCE(p.is_archived, false) as is_archived,
@@ -257,15 +260,22 @@ func (e *HybridFeedEngine) getRecentCelebrityPosts(ctx context.Context, celebrit
 	      FROM posts p
 	      JOIN personnel per ON p.personnel_id = per.id
 	      JOIN users u ON per.user_id = u.id
-	      WHERE p.personnel_id = ANY($1) AND p.deleted_at IS NULL`
-	args := []any{celebrityIDs}
+	      WHERE p.personnel_id = ANY($1) AND p.deleted_at IS NULL
+	        AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+	        AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+	        AND (p.is_archived = false OR p.is_archived IS NULL)
+	        AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+	        AND (NOT COALESCE(per.is_private, false)
+	             OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $2 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+	        AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $2 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $2))`
+	args := []any{celebrityIDs, viewerID}
 
 	if maxScore > 0 {
 		cutoff := time.UnixMilli(int64(maxScore))
-		q += ` AND p.created_at < $2 ORDER BY p.created_at DESC LIMIT $3`
+		q += ` AND p.created_at < $3 ORDER BY p.created_at DESC LIMIT $4`
 		args = append(args, cutoff, limit)
 	} else {
-		q += ` ORDER BY p.created_at DESC LIMIT $2`
+		q += ` ORDER BY p.created_at DESC LIMIT $3`
 		args = append(args, limit)
 	}
 
@@ -291,7 +301,7 @@ func (e *HybridFeedEngine) getRecentCelebrityPosts(ctx context.Context, celebrit
 	return posts, nil
 }
 
-func (e *HybridFeedEngine) hydratePosts(ctx context.Context, ids []uuid.UUID) ([]domain.Post, error) {
+func (e *HybridFeedEngine) hydratePosts(ctx context.Context, ids []uuid.UUID, viewerID uuid.UUID) ([]domain.Post, error) {
 	q := `SELECT p.id, p.personnel_id, p.caption, p.media_url, p.location, p.visibility,
 	             COALESCE(p.status, 'PUBLISHED') as status,
 	             COALESCE(p.is_archived, false) as is_archived,
@@ -306,9 +316,16 @@ func (e *HybridFeedEngine) hydratePosts(ctx context.Context, ids []uuid.UUID) ([
 	      FROM posts p
 	      JOIN personnel per ON p.personnel_id = per.id
 	      JOIN users u ON per.user_id = u.id
-	      WHERE p.id = ANY($1) AND p.deleted_at IS NULL`
+	      WHERE p.id = ANY($1) AND p.deleted_at IS NULL
+	        AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+	        AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+	        AND (p.is_archived = false OR p.is_archived IS NULL)
+	        AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+	        AND (NOT COALESCE(per.is_private, false)
+	             OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $2 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+	        AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $2 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $2))`
 
-	rows, err := e.db.Query(ctx, q, ids)
+	rows, err := e.db.Query(ctx, q, ids, viewerID)
 	if err != nil {
 		return nil, err
 	}

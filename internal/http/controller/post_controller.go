@@ -393,6 +393,16 @@ func (c PostController) GetPostComments(ctx echo.Context) error {
 	if err != nil {
 		return err
 	}
+	claims := security.GetClaimsForContext(ctx)
+	var viewerID uuid.UUID
+	if claims != nil {
+		if rawID, ok := claims["personnel_id"].(string); ok && rawID != "" {
+			viewerID, _ = uuid.FromString(rawID)
+		}
+	}
+	if _, err := c.ps.GetPost(postID, viewerID); err != nil {
+		return err
+	}
 	opt := transport.DecodeQueryOptions(ctx)
 	result, total, err := c.ps.GetPostComments(postID, opt)
 	if err != nil {

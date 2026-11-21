@@ -40,8 +40,9 @@ func (c UserController) FindByID(ctx echo.Context) error {
 	// Parse the path param
 	id, err := uuid.FromString(ctx.Param("id"))
 	if err != nil {
-		return err
-
+		// This legacy path is shared with username lookup. Keep UUID lookup and
+		// username lookup disambiguated by their path value.
+		return c.FindByUserName(ctx)
 	}
 	// Call the service to find the user by id
 	result, err := c.ur.FindByID(id)
@@ -98,6 +99,9 @@ func (c UserController) CheckUsernameAvailability(ctx echo.Context) error {
 func (c UserController) FindByUserName(ctx echo.Context) error {
 	// get the username from the path param
 	encodedUserName := ctx.Param("username")
+	if encodedUserName == "" {
+		encodedUserName = ctx.Param("id")
+	}
 
 	// Decode the URL-encoded username (e.g., decode %2B to +)
 	userName, err := url.QueryUnescape(encodedUserName)

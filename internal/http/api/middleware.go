@@ -32,14 +32,24 @@ func (b ChatApi) SetupMiddleware(e *echo.Echo) {
 	// Add request ID middleware
 	e.Use(echomiddleware.RequestID())
 	// Add CORS middleware
-	e.Use(echomiddleware.CORS())
+	origins := make([]string, 0)
+	for _, origin := range strings.Split(b.cfg.AllowedOrigins, ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			origins = append(origins, origin)
+		}
+	}
+	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
+		AllowOrigins: origins,
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+	}))
 	// Add the swagger redirect middleware
 	e.Use(swagger.RedirectSwagger)
 	// Add the logger middleware
 	e.Use(
 		echomiddleware.LoggerWithConfig(
 			echomiddleware.LoggerConfig{
-				Format: "${time_rfc3339} ${id} ${remote_ip} ${method} ${uri} ${latency_human} ${status} ${error}\n",
+				Format: "${time_rfc3339} ${id} ${remote_ip} ${method} ${path} ${latency_human} ${status} ${error}\n",
 			},
 		),
 	)
@@ -47,26 +57,34 @@ func (b ChatApi) SetupMiddleware(e *echo.Echo) {
 
 // errorMiddleware absorbs and processes all errors
 func errorMiddleware(err error, c echo.Context) {
-	switch err.(type) {
+	switch typedErr := err.(type) {
 	case *echo.HTTPError:
-		err := err.(*echo.HTTPError)
-		switch err.Code {
+		message := "request failed"
+		if typedErr.Code < http.StatusInternalServerError {
+			if text, ok := typedErr.Message.(string); ok && text != "" {
+				message = text
+			}
+		} else {
+			c.Logger().Error(err)
+			message = "internal server error"
+		}
+		switch typedErr.Code {
 		case http.StatusUnauthorized:
-			_ = c.JSON(err.Code, domain.UnauthorizedError{
+			_ = c.JSON(typedErr.Code, domain.UnauthorizedError{
 				Code:    domain.ErrorCodeUNAUTHORIZED,
-				Message: err.Message.(string),
+				Message: message,
 			})
 		case http.StatusForbidden:
-			_ = c.JSON(err.Code, domain.ForbiddenAccessError{
+			_ = c.JSON(typedErr.Code, domain.ForbiddenAccessError{
 				Code:    domain.ErrorCodeFORBIDDEN_ACCESS,
-				Message: err.Message.(string),
+				Message: message,
 			})
 		case http.StatusNotFound:
-			_ = c.JSON(err.Code, domain.NotFoundError{})
+			_ = c.JSON(typedErr.Code, domain.NotFoundError{})
 		case http.StatusBadRequest:
-			_ = c.JSON(err.Code, domain.InvalidRequestError{Message: err.Message.(string)})
+			_ = c.JSON(typedErr.Code, domain.InvalidRequestError{Message: message})
 		default:
-			_ = c.JSON(err.Code, domain.SystemError{Code: domain.ErrorCodeINTERNAL_SERVER_ERROR, Message: err.Message.(string)})
+			_ = c.JSON(typedErr.Code, domain.SystemError{Code: domain.ErrorCodeINTERNAL_SERVER_ERROR, Message: message})
 		}
 
 	case validator.ValidationErrors:
@@ -111,16 +129,17 @@ func errorMiddleware(err error, c echo.Context) {
 		_ = c.JSON(http.StatusBadRequest, ve)
 
 	case *pgconn.PgError:
+		c.Logger().Error(err)
 		res := domain.SystemError{
 			Code:    domain.ErrorCodeINTERNAL_SERVER_ERROR,
-			Message: err.Error(),
+			Message: "internal server error",
 		}
 		_ = c.JSON(http.StatusInternalServerError, res)
 
 	case domain.DataNotFoundError:
 		res := domain.UserError{
 			Code:    domain.ErrorCodeINVALID_REQUEST,
-			Message: err.Error(),
+			Message: "requested record was not found",
 		}
 		_ = c.JSON(http.StatusBadRequest, res)
 
@@ -147,9 +166,10 @@ func errorMiddleware(err error, c echo.Context) {
 		_ = c.JSON(http.StatusForbidden, res)
 
 	default:
+		c.Logger().Error(err)
 		res := domain.SystemError{
 			Code:    domain.ErrorCodeINTERNAL_SERVER_ERROR,
-			Message: err.Error(),
+			Message: "internal server error",
 		}
 		_ = c.JSON(http.StatusInternalServerError, res)
 	}

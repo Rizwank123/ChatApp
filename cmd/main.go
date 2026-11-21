@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Rizwank123/chatApp/internal/dependency"
@@ -16,94 +19,119 @@ import (
 )
 
 func main() {
-	cfgOpt := getConfigOptions()
-	cfg, err := dependency.NewConfig(cfgOpt)
+	cfg, err := dependency.NewConfig(getConfigOptions())
 	if err != nil {
-		log.Fatalf("failed to load configuration")
+		log.Fatalf("failed to load configuration: %v", err)
 	}
-	// Setup database connection
+
 	db, err := dependency.NewDatabaseConfig(cfg)
 	if err != nil {
-		log.Fatalf("failed to create connection for database: %v", err)
+		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	// Initialize the dependencies
 	handlers, err := dependency.NewChatAppApi(cfg, db)
 	if err != nil {
-		log.Fatalf("failed to create dependencies: %v", err)
+		_ = db.Close()
+		log.Fatalf("failed to initialize application dependencies: %v", err)
 	}
 
-	api := handlers.API
-	hub := handlers.Hub
-	broker := handlers.Broker
-
-	//Start the WebSocket server
-	go hub.Run()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+	hubDone := make(chan struct{})
 	go func() {
-		if err := service.DeliverBrokerMessages(ctx, broker, hub); err != nil && err != context.Canceled {
+		defer close(hubDone)
+		handlers.Hub.Run(appCtx)
+	}()
+
+	brokerDone := make(chan struct{})
+	go func() {
+		defer close(brokerDone)
+		if err := service.DeliverBrokerMessages(appCtx, handlers.Broker, handlers.Hub); err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("message broker stopped: %v", err)
 		}
 	}()
 
-	// Set up the echo server
 	e := echo.New()
 	e.HideBanner = true
-
-	// Set up the middleware
-	api.SetupMiddleware(e)
-
-	// Set up the swagger documentation
-	swagger.SetupSwagger(cfg, e)
-
-	// Set up the routes
-	api.SetupRoutes(e)
-
-	// Start the server in a goroutine to handle graceful shutdown
-	go func() {
-		e.Logger.Info(e.Start(fmt.Sprintf("0.0.0.0:%d", cfg.AppPort)))
-	}()
-
-	// Wait for interrupt signal to gracefully shut down the server with a timeout of 10 seconds
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
-	<-quit
-
-	log.Println("Server is shutting down...")
-	cancel()
-
-	// Create a channel to signal shutdown completion
-	done := make(chan struct{})
-
-	// Start shutdown in a goroutine
-	go func() {
-		if err := e.Shutdown(nil); err != nil {
-			e.Logger.Fatal(err)
-		}
-		close(done)
-	}()
-
-	// Wait for shutdown with timeout
-	select {
-	case <-done:
-		log.Println("Server gracefully stopped")
-	case <-time.After(10 * time.Second):
-		log.Println("Server shutdown timed out")
+	if cfg.AppEnv == "production" {
+		e.HidePort = true
 	}
+	e.Server.ReadHeaderTimeout = 10 * time.Second
+	e.Server.IdleTimeout = 120 * time.Second
+	e.Server.MaxHeaderBytes = 1 << 20
+
+	e.GET("/health/live", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
+	e.GET("/health/ready", func(c echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Ping(ctx); err != nil {
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "database unavailable")
+		}
+		if err := handlers.Redis.Client().Ping(ctx).Err(); err != nil {
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "cache unavailable")
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
+	})
+
+	handlers.API.SetupMiddleware(e)
+	swagger.SetupSwagger(cfg, e)
+	handlers.API.SetupRoutes(e)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- e.Start(fmt.Sprintf("0.0.0.0:%d", cfg.AppPort))
+	}()
+
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	select {
+	case <-signalCtx.Done():
+		log.Print("shutdown signal received")
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP server stopped: %v", err)
+		}
+	}
+
+	// Stop accepting requests and cancel long-lived background connections before
+	// closing the shared dependencies they use.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	cancelApp()
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server shutdown: %v", err)
+	}
+	select {
+	case <-brokerDone:
+	case <-shutdownCtx.Done():
+		log.Print("timed out waiting for message broker subscriber to stop")
+	}
+	select {
+	case <-hubDone:
+	case <-shutdownCtx.Done():
+		log.Print("timed out waiting for WebSocket connections to stop")
+	}
+	if handlers.MediaProcessor != nil {
+		handlers.MediaProcessor.Close()
+	}
+	if handlers.Redis != nil {
+		if err := handlers.Redis.Close(); err != nil {
+			log.Printf("Redis shutdown: %v", err)
+		}
+	}
+	db.Close()
+	log.Print("shutdown complete")
 }
 
 func getConfigOptions() config.Options {
-	// Load the configuration
 	cfgSource := os.Getenv(config.SourceKey)
 	if cfgSource == "" {
 		cfgSource = config.SourceEnv
 	}
-	cfgOptions := config.Options{
-		ConfigFileSource: cfgSource,
-	}
-	switch cfgSource {
-	case config.SourceEnv:
+	cfgOptions := config.Options{ConfigFileSource: cfgSource}
+	if cfgSource == config.SourceEnv {
 		cfgOptions.ConfigFile = ".env"
 	}
 	return cfgOptions

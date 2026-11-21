@@ -16,7 +16,7 @@ type (
 		Base
 		UserName string  `db:"user_name" json:"user_name,omitempty" example:"+919984778491"`
 		Password *string `db:"password" json:"-"`
-		Role     string  `db:"role" json:"role,omitempty"  example:"ADMIN"`
+		Role     string  `db:"role" json:"-"  example:"ADMIN"`
 		BaseAudit
 	} // @name User
 )

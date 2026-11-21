@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"sync"
 
 	"github.com/gofrs/uuid/v5"
 )
@@ -19,20 +20,27 @@ type ChatAuthorizer interface {
 	CanChat(ctx context.Context, userA, userB uuid.UUID) (bool, error)
 }
 
+type UserEventBroadcaster interface {
+	BroadcastToUser(ctx context.Context, recipientID uuid.UUID, event string, data any) error
+}
+
 type Hub struct {
-	Clients    map[string]*Client
+	Clients    map[string]map[*Client]struct{}
 	Register   chan *Client
 	Unregister chan *Client
 	Broadcast  chan MessageEnvelope
 	Authorizer ChatAuthorizer
+	done       chan struct{}
+	stopOnce   sync.Once
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		Clients:    make(map[string]*Client),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		Broadcast:  make(chan MessageEnvelope),
+		Clients:    make(map[string]map[*Client]struct{}),
+		Register:   make(chan *Client, 128),
+		Unregister: make(chan *Client, 128),
+		Broadcast:  make(chan MessageEnvelope, 256),
+		done:       make(chan struct{}),
 	}
 }
 
@@ -41,34 +49,89 @@ func (h *Hub) SetAuthorizer(auth ChatAuthorizer) {
 	h.Authorizer = auth
 }
 
-func (h *Hub) Run() {
+func (h *Hub) RegisterClient(client *Client) error {
+	select {
+	case h.Register <- client:
+		return nil
+	case <-h.done:
+		return context.Canceled
+	}
+}
+
+func (h *Hub) UnregisterClient(client *Client) {
+	select {
+	case h.Unregister <- client:
+	case <-h.done:
+	}
+}
+
+func (h *Hub) Publish(ctx context.Context, envelope MessageEnvelope) error {
+	select {
+	case h.Broadcast <- envelope:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-h.done:
+		return context.Canceled
+	}
+}
+
+func (h *Hub) BroadcastToUser(ctx context.Context, recipientID uuid.UUID, event string, data any) error {
+	payload, err := json.Marshal(map[string]any{"type": event, "content": data})
+	if err != nil {
+		return err
+	}
+	return h.Publish(ctx, MessageEnvelope{ReceiverID: recipientID.String(), Message: payload})
+}
+
+func (h *Hub) Run(ctx context.Context) {
+	defer h.stopOnce.Do(func() {
+		for _, clients := range h.Clients {
+			for client := range clients {
+				close(client.Send)
+				_ = client.Conn.Close()
+			}
+		}
+		clear(h.Clients)
+		close(h.done)
+	})
+
 	for {
 		select {
+		case <-ctx.Done():
+			return
+
 		case client := <-h.Register:
-			log.Printf("New client registered. ID: %s, ReceiverID: %s", client.ID, client.ReceiverID)
-			h.Clients[client.ID] = client
+			log.Printf("New WebSocket client registered. ID: %s", client.ID)
+			if h.Clients[client.ID] == nil {
+				h.Clients[client.ID] = make(map[*Client]struct{})
+			}
+			h.Clients[client.ID][client] = struct{}{}
 
 		case client := <-h.Unregister:
 			log.Printf("Client unregistered. ID: %s", client.ID)
-			if _, ok := h.Clients[client.ID]; ok {
-				delete(h.Clients, client.ID)
-				close(client.Send)
+			if clients, ok := h.Clients[client.ID]; ok {
+				if _, registered := clients[client]; registered {
+					delete(clients, client)
+					close(client.Send)
+				}
+				if len(clients) == 0 {
+					delete(h.Clients, client.ID)
+				}
 			}
 
 		case envelope := <-h.Broadcast:
-			// Server-side enforcement of mutual follow authorization
 			if h.Authorizer != nil && envelope.SenderID != "" && envelope.ReceiverID != "" && envelope.SenderID != envelope.ReceiverID {
 				senderUUID, err1 := uuid.FromString(envelope.SenderID)
 				receiverUUID, err2 := uuid.FromString(envelope.ReceiverID)
 				if err1 == nil && err2 == nil {
-					canChat, err := h.Authorizer.CanChat(context.Background(), senderUUID, receiverUUID)
+					canChat, err := h.Authorizer.CanChat(ctx, senderUUID, receiverUUID)
 					if err != nil || !canChat {
-						log.Printf("WebSocket transmission blocked between %s and %s: mutual follow required", envelope.SenderID, envelope.ReceiverID)
-						if sender, ok := h.Clients[envelope.SenderID]; ok {
-							errPayload, _ := json.Marshal(map[string]interface{}{
-								"type":       "error",
-								"error_code": "MUTUAL_FOLLOW_REQUIRED",
-								"message":    "Messaging is restricted: both users must follow each other to exchange messages.",
+						log.Printf("WebSocket transmission blocked between %s and %s: chat authorization failed", envelope.SenderID, envelope.ReceiverID)
+						for sender := range h.Clients[envelope.SenderID] {
+							errPayload, _ := json.Marshal(map[string]string{
+								"type": "error", "error_code": "CHAT_NOT_ALLOWED",
+								"message": "Messaging is not allowed for this relationship.",
 							})
 							select {
 							case sender.Send <- errPayload:
@@ -80,20 +143,19 @@ func (h *Hub) Run() {
 				}
 			}
 
-			log.Printf("Broadcasting message from %s to %s", envelope.SenderID, envelope.ReceiverID)
-			// Find the receiver client
-			if receiver, ok := h.Clients[envelope.ReceiverID]; ok {
-				log.Printf("Found receiver client: %s", receiver.ID)
-				select {
-				case receiver.Send <- envelope.Message:
-					log.Printf("Message sent to receiver: %s", receiver.ID)
-				default:
-					log.Printf("Failed to send message to receiver: %s", receiver.ID)
-					close(receiver.Send)
-					delete(h.Clients, receiver.ID)
+			if clients, ok := h.Clients[envelope.ReceiverID]; ok {
+				for receiver := range clients {
+					select {
+					case receiver.Send <- envelope.Message:
+					default:
+						delete(clients, receiver)
+						close(receiver.Send)
+						_ = receiver.Conn.Close()
+					}
 				}
-			} else {
-				log.Printf("Receiver not found: %s", envelope.ReceiverID)
+				if len(clients) == 0 {
+					delete(h.Clients, envelope.ReceiverID)
+				}
 			}
 		}
 	}

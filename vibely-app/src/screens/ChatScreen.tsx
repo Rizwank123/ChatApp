@@ -126,27 +126,37 @@ export function ChatScreen({
   }, [active?.id, loadMessages]);
 
   useEffect(() => {
-    if (!session?.personnelId) return;
-    const ws = new WebSocket(`${apiConfig.socketUrl}?id=${session.personnelId}`);
-    socket.current = ws;
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "error" || data.error_code === "FOLLOW_REQUIRED") {
-          showToast({
-            message: data.message || "Messaging restricted by follow relationship.",
-            kind: "error",
-          });
-          return;
+    if (!session?.personnelId || !session.token) return;
+    let cancelled = false;
+    let ws: WebSocket | undefined;
+    api.createWebSocketTicket(session.token).then((result) => {
+      if (cancelled) return;
+      ws = new WebSocket(`${apiConfig.socketUrl}?ticket=${encodeURIComponent(result.data.ticket)}`);
+      socket.current = ws;
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "error" || data.error_code === "FOLLOW_REQUIRED") {
+            showToast({
+              message: data.message || "Messaging restricted by follow relationship.",
+              kind: "error",
+            });
+            return;
+          }
+          if (data.type && data.type !== "MESSAGE") return;
+          appendMessage(data as Message);
+        } catch {
+          // Ignore malformed realtime events.
         }
-        appendMessage(data as Message);
-      } catch {
-        // Ignore
-      }
+      };
+    }).catch(() => {
+      if (!cancelled) showToast({ message: "Realtime chat is temporarily unavailable", kind: "info" });
+    });
+    return () => {
+      cancelled = true;
+      ws?.close();
     };
-    ws.onerror = () => {};
-    return () => ws.close();
-  }, [appendMessage, session?.personnelId, showToast]);
+  }, [appendMessage, session?.personnelId, session?.token, showToast]);
 
   async function startNewChatWithUsername() {
     if (!session || !targetUsername.trim()) return;

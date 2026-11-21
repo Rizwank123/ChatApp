@@ -1,7 +1,6 @@
 package websockets
 
 import (
-	"encoding/json"
 	"log"
 	"time"
 
@@ -22,51 +21,30 @@ type Message struct {
 }
 
 type Client struct {
-	ID         string
-	ReceiverID string
-	Conn       *websocket.Conn
-	Send       chan []byte
-	Hub        *Hub
+	ID   string
+	Conn *websocket.Conn
+	Send chan []byte
+	Hub  *Hub
 }
 
 func (c *Client) ReadPump() {
 	defer func() {
 		log.Printf("Client %s disconnecting from ReadPump", c.ID)
-		c.Hub.Unregister <- c
+		c.Hub.UnregisterClient(c)
 		c.Conn.Close()
 	}()
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.Conn.SetReadLimit(1024)
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 
 	for {
-		_, message, err := c.Conn.ReadMessage()
+		_, _, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Printf("Read error for client %s: %v", c.ID, err)
 			break
-		}
-
-		log.Printf("Received message from client %s: %s", c.ID, string(message))
-
-		// Parse the message
-		var msg Message
-		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("Error parsing message from client %s: %v", c.ID, err)
-			continue
-		}
-
-		// Add sender ID and timestamp
-		msg.SenderID = c.ID
-		msg.Timestamp = time.Now()
-
-		// Broadcast to specific receiver
-		log.Printf("Sending message from %s to %s", c.ID, c.ReceiverID)
-		c.Hub.Broadcast <- MessageEnvelope{
-			SenderID:   c.ID,
-			ReceiverID: c.ReceiverID,
-			Message:    message,
 		}
 	}
 }

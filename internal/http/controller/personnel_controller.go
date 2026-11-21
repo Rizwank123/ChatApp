@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rizwank123/chatApp/internal/domain"
 	"github.com/Rizwank123/chatApp/internal/http/transport"
+	"github.com/Rizwank123/chatApp/internal/pkg/security"
 )
 
 type PersonnelController struct {
@@ -16,6 +17,36 @@ type PersonnelController struct {
 
 func NewPersonnelController(ps domain.PersonnelService) PersonnelController {
 	return PersonnelController{ps: ps}
+}
+
+func canManagePersonnel(ctx echo.Context, targetID uuid.UUID) bool {
+	claims := security.GetClaimsForContext(ctx)
+	if claims == nil {
+		return false
+	}
+	if role, _ := claims["role"].(string); role == "ADMIN" {
+		return true
+	}
+	identity, _ := claims["personnel_id"].(string)
+	callerID, err := uuid.FromString(identity)
+	return err == nil && callerID == targetID
+}
+
+func isAdmin(ctx echo.Context) bool {
+	claims := security.GetClaimsForContext(ctx)
+	role, _ := claims["role"].(string)
+	return role == "ADMIN"
+}
+
+func redactPersonnelPrivateFields(ctx echo.Context, personnel *domain.Personnel) {
+	if personnel == nil || canManagePersonnel(ctx, personnel.ID) {
+		return
+	}
+	personnel.Email = nil
+	personnel.Mobile = ""
+	personnel.Address = domain.Address{}
+	personnel.Role = ""
+	personnel.ActivationStatus = ""
 }
 
 // FindPersonnelByID finds personnel by ID.
@@ -46,6 +77,7 @@ func (c PersonnelController) FindPersonnelByID(ctx echo.Context) error {
 	if err != nil {
 		return err
 	}
+	redactPersonnelPrivateFields(ctx, &result)
 	//  return result
 	return transport.SendResponse(ctx, http.StatusOK, result)
 
@@ -68,9 +100,14 @@ func (c PersonnelController) FindPersonnelByID(ctx echo.Context) error {
 //	@Failure		500				{object}	domain.SystemError
 //	@Router			/personnel/filter [post]
 func (c PersonnelController) Filter(ctx echo.Context) error {
+	if !isAdmin(ctx) {
+		return echo.NewHTTPError(http.StatusForbidden, "administrator access required")
+	}
 	//  get filter from request body
 	var in domain.FilterInput
-	transport.DecodeAndValidateRequestBody(ctx, &in)
+	if err := transport.DecodeAndValidateRequestBody(ctx, &in); err != nil {
+		return err
+	}
 	// Load query options from request param
 	opt := transport.DecodeQueryOptions(ctx)
 	//  call service
@@ -108,6 +145,7 @@ func (c PersonnelController) FindPersonnelByUserID(ctx echo.Context) error {
 	if err != nil {
 		return err
 	}
+	redactPersonnelPrivateFields(ctx, &result)
 	//  return result
 	return transport.SendResponse(ctx, http.StatusOK, result)
 }
@@ -129,9 +167,14 @@ func (c PersonnelController) FindPersonnelByUserID(ctx echo.Context) error {
 //	@Failure		500				{object}	domain.SystemError
 //	@Router			/personnel [post]
 func (c PersonnelController) CreatePersonnel(ctx echo.Context) error {
+	if !isAdmin(ctx) {
+		return echo.NewHTTPError(http.StatusForbidden, "administrator access required")
+	}
 	//  get input from request body
 	var in domain.CreatePersonnelInput
-	transport.DecodeAndValidateRequestBody(ctx, &in)
+	if err := transport.DecodeAndValidateRequestBody(ctx, &in); err != nil {
+		return err
+	}
 	//  call service
 	result, err := c.ps.Create(in)
 
@@ -166,9 +209,14 @@ func (c PersonnelController) UpdatePersonnel(ctx echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if !canManagePersonnel(ctx, id) {
+		return echo.NewHTTPError(http.StatusForbidden, "you may only update your own profile")
+	}
 	//  get input from request body
 	var in domain.UpdatePersonnelInput
-	transport.DecodeAndValidateRequestBody(ctx, &in)
+	if err := transport.DecodeAndValidateRequestBody(ctx, &in); err != nil {
+		return err
+	}
 	//  call service
 	result, err := c.ps.Update(id, in)
 	if err != nil {
@@ -199,6 +247,9 @@ func (c PersonnelController) DeletePersonnel(ctx echo.Context) error {
 	id, err := uuid.FromString(ctx.Param("id"))
 	if err != nil {
 		return err
+	}
+	if !canManagePersonnel(ctx, id) {
+		return echo.NewHTTPError(http.StatusForbidden, "you may only delete your own profile")
 	}
 	//  call service
 	err = c.ps.Delete(id)

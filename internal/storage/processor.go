@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
 	"log"
@@ -49,6 +50,7 @@ func NewMediaProcessor(storage domain.StorageProvider, mediaRepo domain.MediaRep
 func (mp *MediaProcessor) Enqueue(mediaID uuid.UUID) {
 	select {
 	case mp.queue <- mediaID:
+	case <-mp.ctx.Done():
 	default:
 		log.Printf("[MediaProcessor] queue full, dropping immediate processing for %s", mediaID)
 	}
@@ -56,7 +58,6 @@ func (mp *MediaProcessor) Enqueue(mediaID uuid.UUID) {
 
 func (mp *MediaProcessor) Close() {
 	mp.cancel()
-	close(mp.queue)
 	mp.wg.Wait()
 }
 
@@ -76,7 +77,7 @@ func (mp *MediaProcessor) worker() {
 }
 
 func (mp *MediaProcessor) processMedia(mediaID uuid.UUID) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(mp.ctx, 30*time.Second)
 	defer cancel()
 
 	media, err := mp.mediaRepo.GetMediaByID(ctx, mediaID)
@@ -92,6 +93,10 @@ func (mp *MediaProcessor) processMedia(mediaID uuid.UUID) {
 
 		// Decode dimensions
 		cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > 50_000_000 {
+			_ = mp.mediaRepo.UpdatePostMediaStatus(ctx, media.ID, "FAILED", "", 0, 0, 0)
+			return
+		}
 		width := cfg.Width
 		height := cfg.Height
 

@@ -62,13 +62,20 @@ func (b ChatApi) SetupRoutes(e *echo.Echo) {
 	secureUserApi := apiV1.Group("/users")
 	secureUserApi.Use(auth)
 	secureUserApi.GET("/:id/posts", b.PostController.GetUserPosts)
-	secureUserApi.POST("/:id/follow", b.PostController.FollowUser)
-	secureUserApi.POST("/:id/unfollow", b.PostController.UnfollowUser)
 	secureUserApi.GET("/:id", b.UserController.FindByID)
 	secureUserApi.GET("/:username", b.UserController.FindByUserName)
+	if b.SocialController != nil {
+		secureUserApi.POST("/:id/follow", b.SocialController.FollowUser)
+		secureUserApi.DELETE("/:id/follow", b.SocialController.UnfollowUser)
+		secureUserApi.POST("/:id/unfollow", b.SocialController.UnfollowUser)
+	} else {
+		secureUserApi.POST("/:id/follow", b.PostController.FollowUser)
+		secureUserApi.POST("/:id/unfollow", b.PostController.UnfollowUser)
+	}
 
 	personnelApi := apiV1.Group("/personnel")
 	personnelApi.Use(auth)
+	personnelApi.GET("/user/:id", b.PersonnelController.FindPersonnelByUserID)
 	personnelApi.GET("/:id", b.PersonnelController.FindPersonnelByID)
 	personnelApi.POST("/filter", b.PersonnelController.Filter)
 	personnelApi.POST("", b.PersonnelController.CreatePersonnel)
@@ -115,6 +122,9 @@ func (b ChatApi) SetupRoutes(e *echo.Echo) {
 		socialApi.GET("/can-chat/:id", b.SocialController.CanChat)
 		socialApi.GET("/followers/:id", b.SocialController.GetFollowers)
 		socialApi.GET("/following/:id", b.SocialController.GetFollowing)
+		socialApi.GET("/follow-requests", b.SocialController.GetFollowRequests)
+		socialApi.POST("/follow-requests/:id/accept", b.SocialController.AcceptFollowRequest)
+		socialApi.POST("/follow-requests/:id/reject", b.SocialController.RejectFollowRequest)
 		socialApi.GET("/search", b.SocialController.SearchUsers)
 		socialApi.GET("/counters/:id", b.SocialController.GetUserCounters)
 		socialApi.GET("/counters", b.SocialController.GetUserCounters)
@@ -159,6 +169,9 @@ func (b ChatApi) SetupRoutes(e *echo.Echo) {
 		hashtagApi.GET("/:tag/posts", b.SearchController.GetHashtagPosts)
 		hashtagApi.GET("/:tag", b.SearchController.GetHashtagDetails)
 	}
+	wsTicketApi := apiV1.Group("/ws-ticket")
+	wsTicketApi.Use(auth)
+	wsTicketApi.POST("", b.ChatController.CreateWebSocketTicket)
 
 	e.GET("/ws", b.ChatController.StartMessaging)
 }

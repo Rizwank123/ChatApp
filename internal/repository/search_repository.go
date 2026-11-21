@@ -156,7 +156,11 @@ func (r *pgxSearchRepository) SearchPosts(ctx context.Context, viewerID uuid.UUI
 		JOIN personnel per ON p.personnel_id = per.id
 		JOIN users u ON per.user_id = u.id
 		WHERE p.deleted_at IS NULL
-		  AND (p.visibility = 'PUBLIC' OR p.personnel_id = $1)
+		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (NOT COALESCE(per.is_private, false)
+		       OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $1 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
 		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
 		  AND (p.is_archived = false OR p.is_archived IS NULL)
 		  AND (
@@ -196,8 +200,14 @@ func (r *pgxSearchRepository) SearchPosts(ctx context.Context, viewerID uuid.UUI
 	countQuery := `
 		SELECT COUNT(*)
 		FROM posts p
+		JOIN personnel per ON per.id = p.personnel_id
+		JOIN users u ON u.id = per.user_id
 		WHERE p.deleted_at IS NULL
-		  AND (p.visibility = 'PUBLIC' OR p.personnel_id = $1)
+		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (NOT COALESCE(per.is_private, false)
+		       OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $1 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
 		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
 		  AND (p.is_archived = false OR p.is_archived IS NULL)
 		  AND (
@@ -230,7 +240,7 @@ func (r *pgxSearchRepository) SearchHashtags(ctx context.Context, query string, 
 	sqlQuery := `
 		SELECT h.id,
 		       h.name,
-		       COUNT(ph.post_id) as post_count,
+		       COUNT(u.id) as post_count,
 		       (
 		           CASE
 		               WHEN LOWER(h.name) = LOWER($1) THEN 1.0
@@ -240,12 +250,22 @@ func (r *pgxSearchRepository) SearchHashtags(ctx context.Context, query string, 
 		       ) as match_score
 		FROM hashtags h
 		LEFT JOIN post_hashtags ph ON h.id = ph.hashtag_id
+		LEFT JOIN posts p ON p.id = ph.post_id
+		  AND p.deleted_at IS NULL
+		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+		  AND (p.is_archived = false OR p.is_archived IS NULL)
+		LEFT JOIN personnel per ON per.id = p.personnel_id
+		  AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+		  AND NOT COALESCE(per.is_private, false)
+		LEFT JOIN users u ON u.id = per.user_id AND u.deleted_at IS NULL
 		WHERE h.deleted_at IS NULL
 		  AND (
 		      h.name ILIKE $3
 		      OR similarity(h.name, $1) > 0.15
 		  )
 		GROUP BY h.id, h.name
+		HAVING COUNT(u.id) > 0
 		ORDER BY match_score DESC, post_count DESC
 		LIMIT $4 OFFSET $5
 	`
@@ -270,6 +290,21 @@ func (r *pgxSearchRepository) SearchHashtags(ctx context.Context, query string, 
 		FROM hashtags h
 		WHERE h.deleted_at IS NULL
 		  AND (h.name ILIKE $1 OR similarity(h.name, $2) > 0.15)
+		  AND EXISTS (
+		      SELECT 1
+		      FROM post_hashtags ph
+		      JOIN posts p ON p.id = ph.post_id
+		      JOIN personnel per ON per.id = p.personnel_id
+		      JOIN users u ON u.id = per.user_id
+		      WHERE ph.hashtag_id = h.id
+		        AND p.deleted_at IS NULL
+		        AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		        AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+		        AND (p.is_archived = false OR p.is_archived IS NULL)
+		        AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+		        AND NOT COALESCE(per.is_private, false)
+		        AND u.deleted_at IS NULL
+		  )
 	`
 	var total int64
 	_ = r.db.QueryRow(ctx, countQuery, searchPattern, cleanQuery).Scan(&total)
@@ -310,7 +345,11 @@ func (r *pgxSearchRepository) GetPostsByHashtag(ctx context.Context, viewerID uu
 		JOIN users u ON per.user_id = u.id
 		WHERE LOWER(h.name) = $2
 		  AND p.deleted_at IS NULL
-		  AND (p.visibility = 'PUBLIC' OR p.personnel_id = $1)
+		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (NOT COALESCE(per.is_private, false)
+		       OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $1 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
 		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
 		  AND (p.is_archived = false OR p.is_archived IS NULL)
 		ORDER BY p.created_at DESC
@@ -345,9 +384,15 @@ func (r *pgxSearchRepository) GetPostsByHashtag(ctx context.Context, viewerID uu
 		FROM posts p
 		JOIN post_hashtags ph ON p.id = ph.post_id
 		JOIN hashtags h ON ph.hashtag_id = h.id
+		JOIN personnel per ON per.id = p.personnel_id
+		JOIN users u ON u.id = per.user_id
 		WHERE LOWER(h.name) = $1
 		  AND p.deleted_at IS NULL
-		  AND (p.visibility = 'PUBLIC' OR p.personnel_id = $2)
+		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (NOT COALESCE(per.is_private, false)
+		       OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $2 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))
+		  AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $2 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $2))
+		  AND per.deleted_at IS NULL AND u.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
 		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
 		  AND (p.is_archived = false OR p.is_archived IS NULL)
 	`
@@ -364,10 +409,20 @@ func (r *pgxSearchRepository) GetHashtagDetails(ctx context.Context, name string
 	cleanTag := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(name)), "#")
 
 	query := `
-		SELECT h.id, h.name, COUNT(ph.post_id) as post_count
+		SELECT h.id, h.name, COUNT(DISTINCT p.id) as post_count
 		FROM hashtags h
-		LEFT JOIN post_hashtags ph ON h.id = ph.hashtag_id
+		JOIN post_hashtags ph ON h.id = ph.hashtag_id
+		JOIN posts p ON p.id = ph.post_id
+		JOIN personnel per ON per.id = p.personnel_id
+		JOIN users u ON u.id = per.user_id
 		WHERE LOWER(h.name) = $1 AND h.deleted_at IS NULL
+		  AND p.deleted_at IS NULL
+		  AND (p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		  AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+		  AND (p.is_archived = false OR p.is_archived IS NULL)
+		  AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+		  AND NOT COALESCE(per.is_private, false)
+		  AND u.deleted_at IS NULL
 		GROUP BY h.id, h.name
 	`
 	var res domain.HashtagSearchResult

@@ -186,7 +186,21 @@ func (r *pgxSocialGraphRepository) UnsavePost(ctx context.Context, personnelID, 
 }
 
 func (r *pgxSocialGraphRepository) GetSavedPosts(ctx context.Context, personnelID uuid.UUID, limit, offset int) ([]domain.Post, int64, error) {
-	countQ := `SELECT COUNT(*) FROM saved_posts WHERE personnel_id = $1`
+	visiblePostFilter := `
+		p.deleted_at IS NULL
+		AND (p.personnel_id = $1 OR ((p.visibility = 'PUBLIC' OR p.visibility IS NULL)
+		     AND (NOT COALESCE(per.is_private, false)
+		          OR EXISTS(SELECT 1 FROM follows vf WHERE vf.follower_id = $1 AND vf.following_id = p.personnel_id AND vf.deleted_at IS NULL))))
+		AND (p.status = 'PUBLISHED' OR p.status IS NULL)
+		AND (p.is_archived = false OR p.is_archived IS NULL)
+		AND per.deleted_at IS NULL AND per.activation_status = 'ACTIVE'
+		AND u.deleted_at IS NULL
+		AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.personnel_id) OR (b.blocker_id = p.personnel_id AND b.blocked_id = $1))`
+	countQ := `SELECT COUNT(*) FROM saved_posts s
+		JOIN posts p ON s.post_id = p.id
+		JOIN personnel per ON per.id = p.personnel_id
+		JOIN users u ON u.id = per.user_id
+		WHERE s.personnel_id = $1 AND ` + visiblePostFilter
 	var total int64
 	if err := r.db.QueryRow(ctx, countQ, personnelID).Scan(&total); err != nil {
 		return nil, 0, err
@@ -195,7 +209,9 @@ func (r *pgxSocialGraphRepository) GetSavedPosts(ctx context.Context, personnelI
 	q := `SELECT p.id, p.personnel_id, p.caption, p.media_url, p.location, p.visibility, p.created_at, p.updated_at
 	      FROM saved_posts s
 	      JOIN posts p ON s.post_id = p.id
-	      WHERE s.personnel_id = $1 AND p.deleted_at IS NULL
+	      JOIN personnel per ON per.id = p.personnel_id
+	      JOIN users u ON u.id = per.user_id
+	      WHERE s.personnel_id = $1 AND ` + visiblePostFilter + `
 	      ORDER BY s.created_at DESC
 	      LIMIT $2 OFFSET $3`
 	rows, err := r.db.Query(ctx, q, personnelID, limit, offset)

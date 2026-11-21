@@ -4,6 +4,8 @@ package dependency
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/wire"
@@ -21,6 +23,7 @@ import (
 	"github.com/Rizwank123/chatApp/internal/pkg/util"
 	"github.com/Rizwank123/chatApp/internal/repository"
 	"github.com/Rizwank123/chatApp/internal/service"
+	"github.com/Rizwank123/chatApp/internal/storage"
 	"github.com/Rizwank123/chatApp/internal/websockets"
 )
 
@@ -40,17 +43,63 @@ func NewDatabaseConfig(cfg config.ChatApiConfig) (*pgxpool.Pool, error) {
 }
 
 type ChatAppResult struct {
-	API    *api.ChatApi
-	Hub    *websockets.Hub
-	Broker domain.MessageBroker
+	API            *api.ChatApi
+	Hub            *websockets.Hub
+	Broker         domain.MessageBroker
+	Redis          *cache.RedisClient
+	MediaProcessor *storage.MediaProcessor
+}
+
+func ProvideRedisClient(cfg config.ChatApiConfig) (*cache.RedisClient, error) {
+	return cache.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+}
+
+func ProvideStorageProvider(cfg config.ChatApiConfig) (domain.StorageProvider, error) {
+	if cfg.AppEnv == "production" {
+		if cfg.MinIOEndpoint == "" || strings.Contains(cfg.MinIOEndpoint, "://") || cfg.MinIOBucket == "" || !cfg.MinIOUseSSL {
+			return nil, fmt.Errorf("production object storage requires an endpoint, bucket, and TLS")
+		}
+		if cfg.MinIOAccessKey == "" || cfg.MinIOSecretKey == "" || cfg.MinIOAccessKey == "minioadmin" || cfg.MinIOSecretKey == "minioadmin" || cfg.MinIOAccessKey == "localminio" || cfg.MinIOSecretKey == "local-minio-password-change-me" || cfg.MinIOAccessKey == "localdev" || cfg.MinIOSecretKey == "local-dev-secret-change-me" {
+			return nil, fmt.Errorf("production object storage credentials must be explicitly configured")
+		}
+	}
+	return storage.NewMinIOStorageProvider(storage.MinIOConfig{
+		Provider: cfg.StorageProvider, Endpoint: cfg.MinIOEndpoint, AccessKey: cfg.MinIOAccessKey,
+		SecretKey: cfg.MinIOSecretKey, Bucket: cfg.MinIOBucket, UseSSL: cfg.MinIOUseSSL,
+		Region: cfg.MinIORegion, PublicURL: cfg.MinIOPublicURL, CreateBucket: cfg.AppEnv != "production",
+	})
+}
+
+func ProvideMessageBroker(client *cache.RedisClient) domain.MessageBroker {
+	return broker.NewRedisMessageBroker(client.Client())
+}
+
+func ProvideTicketManager(client *cache.RedisClient) *websockets.TicketManager {
+	return websockets.NewTicketManager(client.Client())
 }
 
 func ProvideHybridFeedEngine(
 	db *pgxpool.Pool,
+	redisClient *cache.RedisClient,
 	socialRepo domain.SocialGraphRepository,
 	postRepo domain.PostRepository,
 ) *feed.HybridFeedEngine {
-	return feed.NewHybridFeedEngine(db, nil, socialRepo, postRepo, nil)
+	return feed.NewHybridFeedEngine(db, redisClient, socialRepo, postRepo, nil)
+}
+
+func ProvideChatController(
+	cs domain.ChatService,
+	hub *websockets.Hub,
+	tickets *websockets.TicketManager,
+	cfg config.ChatApiConfig,
+) controller.ChatController {
+	origins := make([]string, 0)
+	for _, origin := range strings.Split(cfg.AllowedOrigins, ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			origins = append(origins, origin)
+		}
+	}
+	return controller.NewChatController(cs, hub, tickets, origins)
 }
 
 func ProvideUserExistenceChecker(ur domain.UserRepository) *cache.UserExistenceChecker {
@@ -74,9 +123,13 @@ func ProvideChatApi(
 	psc controller.PostController,
 	uc controller.UserController,
 	sc controller.SocialController,
+	mc controller.MediaController,
+	search controller.SearchController,
 ) *api.ChatApi {
 	chatApi := api.NewChatApi(cfg, cc, pr, psc, uc)
 	chatApi.SetSocialController(sc)
+	chatApi.SetMediaController(mc)
+	chatApi.SetSearchController(search)
 	return chatApi
 }
 
@@ -84,6 +137,10 @@ func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*ChatAppResult, 
 	wire.Build(
 		util.NewAppUtil,
 		security.NewJwtSecurityManager,
+		ProvideRedisClient,
+		ProvideStorageProvider,
+		ProvideMessageBroker,
+		ProvideTicketManager,
 
 		repository.NewTransactioner,
 
@@ -93,25 +150,33 @@ func NewChatAppApi(cfg config.ChatApiConfig, db *pgxpool.Pool) (*ChatAppResult, 
 		repository.NewPostRepository,
 		repository.NewSocialGraphRepository,
 		repository.NewNotificationRepository,
+		repository.NewMediaRepository,
+		repository.NewSearchRepository,
 
 		service.NewUserService,
 		service.NewPersonnelService,
 		ProvideUserExistenceChecker,
-		broker.NewInMemoryBroker,
 		service.NewChatService,
-		service.NewPostService,
+		service.NewMediaService,
+		storage.NewMediaProcessor,
+		service.NewEnhancedPostService,
+		service.NewSearchService,
 		ProvideHybridFeedEngine,
-		wire.Value((*websockets.DistributedHub)(nil)),
-		service.NewSocialService,
+		service.NewSocialServiceWithPersonnel,
 
 		websockets.NewHub,
+		ProvideChatController,
 		controller.NewUserController,
 		controller.NewPersonnelController,
-		controller.NewChatController,
 		controller.NewPostController,
 		controller.NewSocialController,
+		controller.NewMediaController,
+		controller.NewSearchController,
 
 		ProvideChatApi,
+		wire.Bind(new(domain.FeedFanoutEngine), new(*feed.HybridFeedEngine)),
+		wire.Bind(new(domain.MediaProcessorEnqueuer), new(*storage.MediaProcessor)),
+		wire.Bind(new(service.UserEventBroadcaster), new(*websockets.Hub)),
 		wire.Struct(new(ChatAppResult), "*"),
 	)
 	return &ChatAppResult{}, nil

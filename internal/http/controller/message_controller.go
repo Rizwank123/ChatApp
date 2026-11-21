@@ -13,14 +13,18 @@ import (
 )
 
 type ChatController struct {
-	cs  domain.ChatService
-	hub *websockets.Hub
+	cs             domain.ChatService
+	hub            *websockets.Hub
+	wsTickets      *websockets.TicketManager
+	allowedOrigins []string
 }
 
-func NewChatController(cs domain.ChatService, hub *websockets.Hub) ChatController {
+func NewChatController(cs domain.ChatService, hub *websockets.Hub, tickets *websockets.TicketManager, allowedOrigins []string) ChatController {
 	return ChatController{
-		cs:  cs,
-		hub: hub,
+		cs:             cs,
+		hub:            hub,
+		wsTickets:      tickets,
+		allowedOrigins: allowedOrigins,
 	}
 }
 
@@ -342,10 +346,31 @@ func (c ChatController) UpdateMessageStatus(ctx echo.Context) error {
 //	@Failure		500	{object}	domain.SystemError
 //	@Router			/ws [get]
 func (c ChatController) StartMessaging(ctx echo.Context) error {
-	personnelID := ctx.QueryParam("id")
-
-	if personnelID == "" {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing personnel id"})
+	ticket := ctx.QueryParam("ticket")
+	personnelID, ok := c.wsTickets.Consume(ctx.Request().Context(), ticket)
+	if !ok {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid or expired WebSocket ticket")
 	}
-	return transport.ServeWebSocket(c.hub, ctx, personnelID)
+	return transport.ServeWebSocket(c.hub, ctx, personnelID.String(), c.allowedOrigins)
+}
+
+// CreateWebSocketTicket exchanges an authenticated access token for a
+// short-lived, single-use WebSocket credential.
+func (c ChatController) CreateWebSocketTicket(ctx echo.Context) error {
+	claims := security.GetClaimsForContext(ctx)
+	rawID, ok := claims["personnel_id"].(string)
+	if !ok || rawID == "" {
+		return echo.NewHTTPError(http.StatusUnauthorized, "missing personnel identity")
+	}
+	personnelID, err := uuid.FromString(rawID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid personnel identity")
+	}
+	ticket, expiresAt, err := c.wsTickets.Issue(ctx.Request().Context(), personnelID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "could not create WebSocket ticket")
+	}
+	return ctx.JSON(http.StatusCreated, map[string]any{
+		"data": map[string]any{"ticket": ticket, "expires_at": expiresAt},
+	})
 }

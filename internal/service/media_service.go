@@ -19,6 +19,7 @@ var (
 	ErrInvalidExtension = errors.New("invalid file extension")
 	ErrObjectNotFound   = errors.New("uploaded object not found in storage")
 	ErrUnauthorized     = errors.New("unauthorized action on media object")
+	ErrUploadExpired    = errors.New("media upload has expired")
 )
 
 type mediaService struct {
@@ -51,6 +52,9 @@ func (s *mediaService) InitiateUpload(ctx context.Context, ownerID uuid.UUID, in
 	ext := strings.ToLower(filepath.Ext(input.Filename))
 	if !isAllowedExtension(mediaType, ext) {
 		return nil, ErrInvalidExtension
+	}
+	if !isAllowedMIMEType(mediaType, input.MIMEType) {
+		return nil, ErrInvalidMediaType
 	}
 
 	mediaID, err := uuid.NewV4()
@@ -108,11 +112,30 @@ func (s *mediaService) CompleteUpload(ctx context.Context, ownerID uuid.UUID, up
 	if upload.OwnerID != ownerID {
 		return nil, ErrUnauthorized
 	}
+	if upload.Status == "READY" {
+		return upload, nil
+	}
+	if upload.Status != "PENDING" || time.Now().After(upload.ExpiresAt) {
+		return nil, ErrUploadExpired
+	}
 
 	// Verify object physically exists in MinIO
-	size, _, err := s.storage.StatObject(ctx, upload.Bucket, upload.ObjectKey)
+	size, contentType, err := s.storage.StatObject(ctx, upload.Bucket, upload.ObjectKey)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrObjectNotFound, err)
+	}
+	maxSize := int64(30 * 1024 * 1024)
+	if upload.MediaType == "VIDEO" {
+		maxSize = 100 * 1024 * 1024
+	}
+	if size <= 0 || size > maxSize {
+		return nil, ErrFileTooLarge
+	}
+	if size != upload.FileSize {
+		return nil, fmt.Errorf("uploaded size does not match the declared size")
+	}
+	if contentType != "application/octet-stream" && !isAllowedMIMEType(upload.MediaType, contentType) {
+		return nil, ErrInvalidMediaType
 	}
 
 	upload.FileSize = size
@@ -125,10 +148,13 @@ func (s *mediaService) CompleteUpload(ctx context.Context, ownerID uuid.UUID, up
 	return upload, nil
 }
 
-func (s *mediaService) GetMedia(ctx context.Context, mediaID uuid.UUID) (*domain.PostMedia, error) {
+func (s *mediaService) GetMedia(ctx context.Context, ownerID, mediaID uuid.UUID) (*domain.PostMedia, error) {
 	media, err := s.mediaRepo.GetMediaByID(ctx, mediaID)
 	if err != nil {
 		return nil, err
+	}
+	if media.OwnerID != ownerID {
+		return nil, ErrUnauthorized
 	}
 	s.ResolveMediaURLs(media)
 	return media, nil
@@ -143,6 +169,9 @@ func (s *mediaService) AttachMediaToPost(ctx context.Context, postID, ownerID uu
 		}
 		if upload.OwnerID != ownerID {
 			return nil, ErrUnauthorized
+		}
+		if upload.Status != "READY" || time.Now().After(upload.ExpiresAt) {
+			return nil, fmt.Errorf("media upload is not ready")
 		}
 
 		pm := &domain.PostMedia{
@@ -172,12 +201,31 @@ func (s *mediaService) ResolveMediaURLs(media *domain.PostMedia) {
 	if media == nil {
 		return
 	}
-	media.URL = s.storage.ResolvePublicURL(media.Bucket, media.ObjectKey)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	media.URL, _ = s.storage.GeneratePresignedGetURL(ctx, media.Bucket, media.ObjectKey, 15*time.Minute)
 	if media.ThumbnailKey != "" {
-		media.ThumbnailURL = s.storage.ResolvePublicURL(media.Bucket, media.ThumbnailKey)
+		media.ThumbnailURL, _ = s.storage.GeneratePresignedGetURL(ctx, media.Bucket, media.ThumbnailKey, 15*time.Minute)
 	} else if media.MediaType == "IMAGE" {
 		media.ThumbnailURL = media.URL
 	}
+}
+
+func isAllowedMIMEType(mediaType, mimeType string) bool {
+	mimeType = strings.ToLower(strings.Split(mimeType, ";")[0])
+	if mediaType == "IMAGE" {
+		switch mimeType {
+		case "image/jpeg", "image/png", "image/webp", "image/gif", "image/heic":
+			return true
+		}
+	}
+	if mediaType == "VIDEO" {
+		switch mimeType {
+		case "video/mp4", "video/quicktime", "video/webm", "video/x-matroska":
+			return true
+		}
+	}
+	return false
 }
 
 func (s *mediaService) ResolveMediaListURLs(mediaList []domain.PostMedia) {

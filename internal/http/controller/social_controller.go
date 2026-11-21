@@ -91,6 +91,41 @@ func (sc SocialController) FollowUser(c echo.Context) error {
 	})
 }
 
+func (sc SocialController) GetFollowRequests(c echo.Context) error {
+	personnelID, err := getPersonnelID(c)
+	if err != nil {
+		return err
+	}
+	requests, err := sc.ss.GetPendingFollowRequests(c.Request().Context(), personnelID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "could not load follow requests")
+	}
+	return c.JSON(http.StatusOK, domain.BaseResponse{Data: requests})
+}
+
+func (sc SocialController) RespondFollowRequest(c echo.Context, accept bool) error {
+	personnelID, err := getPersonnelID(c)
+	if err != nil {
+		return err
+	}
+	requestID, err := uuid.FromString(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid follow request id")
+	}
+	if err := sc.ss.RespondFollowRequest(c.Request().Context(), requestID, personnelID, accept); err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, domain.BaseResponse{Data: map[string]string{"status": map[bool]string{true: "ACCEPTED", false: "REJECTED"}[accept]}})
+}
+
+func (sc SocialController) AcceptFollowRequest(c echo.Context) error {
+	return sc.RespondFollowRequest(c, true)
+}
+
+func (sc SocialController) RejectFollowRequest(c echo.Context) error {
+	return sc.RespondFollowRequest(c, false)
+}
+
 // UnfollowUser unfollows a user.
 func (sc SocialController) UnfollowUser(c echo.Context) error {
 	personnelID, err := getPersonnelID(c)

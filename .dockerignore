@@ -1,0 +1,14 @@
+.git
+.idea
+.vscode
+.env
+test.env
+bin
+node_modules
+dist
+coverage
+vibely-app.zip
+.certs
+vibely-app/node_modules
+vibely-app/.expo
+*.pem
