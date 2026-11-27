@@ -127,7 +127,7 @@ func ProvideStorageProvider(cfg config.ChatApiConfig) (domain.StorageProvider, e
 		}
 	}
 	return storage.NewMinIOStorageProvider(storage.MinIOConfig{
-		Provider: cfg.StorageProvider, Endpoint: cfg.MinIOEndpoint, AccessKey: cfg.MinIOAccessKey,
+		Provider: cfg.StorageProvider, Endpoint: cfg.MinIOEndpoint, PublicEndpoint: cfg.MinIOPublicEndpoint, AccessKey: cfg.MinIOAccessKey,
 		SecretKey: cfg.MinIOSecretKey, Bucket: cfg.MinIOBucket, UseSSL: cfg.MinIOUseSSL,
 		Region: cfg.MinIORegion, PublicURL: cfg.MinIOPublicURL, CreateBucket: cfg.AppEnv != "production",
 	})

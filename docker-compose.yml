@@ -59,10 +59,11 @@ services:
       context: .
       dockerfile: Dockerfile
       target: migrator
-    command: >-
-      goose -dir /migrations postgres
-      "host=database port=5432 user=$${DB_USERNAME} password=$${DB_PASSWORD} dbname=$${DB_DATABASE_NAME} sslmode=$${DB_SSL_MODE}"
-      up
+    command:
+      - >-
+        goose -dir /migrations postgres
+        "host=database port=5432 user=$${DB_USERNAME} password=$${DB_PASSWORD} dbname=$${DB_DATABASE_NAME} sslmode=$${DB_SSL_MODE}"
+        up
     environment:
       DB_USERNAME: ${DB_USERNAME:-chatapp}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
@@ -94,8 +95,13 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       AUTH_EXPIRY_PERIOD: ${AUTH_EXPIRY_PERIOD:-24}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      SWAGGER_HOST_URL: ${SWAGGER_HOST_URL:-localhost:7700}
+      SWAGGER_HOST_SCHEME: ${SWAGGER_HOST_SCHEME:-http}
+      SWAGGER_USERNAME: ${SWAGGER_USERNAME:?Set SWAGGER_USERNAME in .env}
+      SWAGGER_PASSWORD: ${SWAGGER_PASSWORD:?Set SWAGGER_PASSWORD in .env}
       STORAGE_PROVIDER: minio
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-host.docker.internal:8333}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:8333}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-localdev}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
       MINIO_BUCKET: ${MINIO_BUCKET:-chatapp-media}
@@ -112,6 +118,27 @@ services:
       redis:
         condition: service_healthy
       objectstore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/health/ready >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./vibely-app
+      dockerfile: Dockerfile
+      args:
+        EXPO_PUBLIC_API_URL: ${FRONTEND_API_URL:-http://localhost:7700/api/v1}
+        EXPO_PUBLIC_WS_URL: ${FRONTEND_WS_URL:-ws://localhost:7700/ws}
+        EXPO_PUBLIC_ALLOW_INSECURE_API: ${FRONTEND_ALLOW_INSECURE_API:-true}
+    ports:
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8081}:80"
+    depends_on:
+      api:
         condition: service_healthy
     restart: unless-stopped
 

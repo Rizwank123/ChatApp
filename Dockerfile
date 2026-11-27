@@ -23,6 +23,7 @@ RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S app \
     && adduser -S -G app app
 WORKDIR /app
+ENV CONFIG_SOURCE=CONTAINER
 COPY --from=builder /out/chatapp /app/chatapp
 USER app
 EXPOSE 8080

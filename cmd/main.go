@@ -31,7 +31,7 @@ func main() {
 
 	handlers, err := dependency.NewChatAppApi(cfg, db)
 	if err != nil {
-		_ = db.Close()
+		db.Close()
 		log.Fatalf("failed to initialize application dependencies: %v", err)
 	}
 

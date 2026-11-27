@@ -26,6 +26,9 @@ func (r *pgxPostRepository) CreatePost(ctx context.Context, entity *domain.Post)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if entity.MediaURL == nil {
+		entity.MediaURL = []string{}
+	}
 	txVal := ctx.Value(TxKey)
 
 	status := entity.Status

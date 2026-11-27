@@ -3,14 +3,23 @@
 -- Add personnel_id column to message_stat if it does not exist
 ALTER TABLE "public"."message_stat" ADD COLUMN IF NOT EXISTS "personnel_id" UUID;
 
--- Make user_id nullable if it exists
-ALTER TABLE "public"."message_stat" ALTER COLUMN "user_id" DROP NOT NULL;
-
--- Populate personnel_id from user_id if any rows exist
-UPDATE "public"."message_stat" ms
-SET "personnel_id" = p."id"
-FROM "public"."personnel" p
-WHERE ms."user_id" = p."user_id" AND ms."personnel_id" IS NULL;
+-- Older schemas used user_id; the current schema already uses personnel_id.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'message_stat'
+          AND column_name = 'user_id'
+    ) THEN
+        EXECUTE 'ALTER TABLE "public"."message_stat" ALTER COLUMN "user_id" DROP NOT NULL';
+        EXECUTE 'UPDATE "public"."message_stat" ms
+                 SET "personnel_id" = p."id"
+                 FROM "public"."personnel" p
+                 WHERE ms."user_id" = p."user_id" AND ms."personnel_id" IS NULL';
+    END IF;
+END
+$$;
 
 -- Add foreign key constraint to personnel
 ALTER TABLE "public"."message_stat" DROP CONSTRAINT IF EXISTS "message_stat_personnel_id_fkey";
@@ -32,5 +41,4 @@ CREATE INDEX IF NOT EXISTS "idx_message_stat_personnel_id"
 DROP INDEX IF EXISTS "idx_message_stat_personnel_id";
 ALTER TABLE "public"."message_stat" DROP CONSTRAINT IF EXISTS "message_stat_message_id_personnel_id_key";
 ALTER TABLE "public"."message_stat" DROP CONSTRAINT IF EXISTS "message_stat_personnel_id_fkey";
-ALTER TABLE "public"."message_stat" DROP COLUMN IF EXISTS "personnel_id";
 -- +goose StatementEnd

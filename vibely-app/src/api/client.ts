@@ -29,6 +29,7 @@ import type {
 const defaultHost = Platform.OS === "android" ? "192.168.1.36" : "localhost";
 const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
 const isProductionBuild = process.env.NODE_ENV === "production";
+const allowInsecureApi = process.env.EXPO_PUBLIC_ALLOW_INSECURE_API === "true";
 if (isProductionBuild && !configuredApiUrl) {
 	throw new Error("EXPO_PUBLIC_API_URL must be set for a production build");
 }
@@ -38,7 +39,7 @@ const derivedSocketUrl = baseUrl
 	.replace(/^http:/, "ws:")
 	.replace(/\/api\/v1$/, "/ws");
 const socketUrl = process.env.EXPO_PUBLIC_WS_URL ?? derivedSocketUrl;
-if (isProductionBuild && (!baseUrl.startsWith("https://") || !socketUrl.startsWith("wss://"))) {
+if (isProductionBuild && !allowInsecureApi && (!baseUrl.startsWith("https://") || !socketUrl.startsWith("wss://"))) {
 	throw new Error("Production API and WebSocket endpoints must use HTTPS and WSS");
 }
 

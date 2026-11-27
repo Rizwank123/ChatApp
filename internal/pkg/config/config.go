@@ -37,14 +37,15 @@ type ChatApiConfig struct {
 	RedisPassword string `mapstructure:"REDIS_PASSWORD"`
 	RedisDB       int    `mapstructure:"REDIS_DB"`
 
-	StorageProvider string `mapstructure:"STORAGE_PROVIDER"`
-	MinIOEndpoint   string `mapstructure:"MINIO_ENDPOINT"`
-	MinIOAccessKey  string `mapstructure:"MINIO_ACCESS_KEY"`
-	MinIOSecretKey  string `mapstructure:"MINIO_SECRET_KEY"`
-	MinIOBucket     string `mapstructure:"MINIO_BUCKET"`
-	MinIOUseSSL     bool   `mapstructure:"MINIO_USE_SSL"`
-	MinIORegion     string `mapstructure:"MINIO_REGION"`
-	MinIOPublicURL  string `mapstructure:"MINIO_PUBLIC_URL"`
+	StorageProvider     string `mapstructure:"STORAGE_PROVIDER"`
+	MinIOEndpoint       string `mapstructure:"MINIO_ENDPOINT"`
+	MinIOPublicEndpoint string `mapstructure:"MINIO_PUBLIC_ENDPOINT"`
+	MinIOAccessKey      string `mapstructure:"MINIO_ACCESS_KEY"`
+	MinIOSecretKey      string `mapstructure:"MINIO_SECRET_KEY"`
+	MinIOBucket         string `mapstructure:"MINIO_BUCKET"`
+	MinIOUseSSL         bool   `mapstructure:"MINIO_USE_SSL"`
+	MinIORegion         string `mapstructure:"MINIO_REGION"`
+	MinIOPublicURL      string `mapstructure:"MINIO_PUBLIC_URL"`
 }
 
 type Options struct {
@@ -66,7 +67,7 @@ func NewFromEnvironmentVariable(opt Options) (cfg ChatApiConfig, err error) {
 		"DB_PASSWORD", "DB_DATABASE_NAME", "DB_SSL_MODE", "DB_SSL_ROOT_CERT", "SWAGGER_HOST_URL",
 		"SWAGGER_HOST_SCHEME", "SWAGGER_USERNAME", "SWAGGER_PASSWORD", "AUTH_SECRET",
 		"AUTH_EXPIRY_PERIOD", "ALLOWED_ORIGINS", "REDIS_ADDR", "REDIS_PASSWORD", "REDIS_DB",
-		"STORAGE_PROVIDER", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY",
+		"STORAGE_PROVIDER", "MINIO_ENDPOINT", "MINIO_PUBLIC_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY",
 		"MINIO_BUCKET", "MINIO_USE_SSL", "MINIO_REGION", "MINIO_PUBLIC_URL",
 	} {
 		if err := v.BindEnv(key); err != nil {

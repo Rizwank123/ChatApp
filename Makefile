@@ -3,6 +3,18 @@ ifeq ($(GO),)
 GO := go
 endif
 
+DOCKER ?= docker
+
+.PHONY: docker-up docker-down
+
+# Build and start the application and its dependencies with Docker Compose
+docker-up:
+	$(DOCKER) compose up --build
+
+# Stop the Docker Compose services
+docker-down:
+	$(DOCKER) compose down
+
 # Setup the platform
 setup:
 	@echo "Generating env files..."

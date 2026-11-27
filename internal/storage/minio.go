@@ -19,6 +19,7 @@ import (
 type MinIOConfig struct {
 	Provider        string `mapstructure:"STORAGE_PROVIDER"`
 	Endpoint        string `mapstructure:"MINIO_ENDPOINT"`
+	PublicEndpoint  string `mapstructure:"MINIO_PUBLIC_ENDPOINT"`
 	AccessKey       string `mapstructure:"MINIO_ACCESS_KEY"`
 	SecretKey       string `mapstructure:"MINIO_SECRET_KEY"`
 	Bucket          string `mapstructure:"MINIO_BUCKET"`
@@ -30,10 +31,11 @@ type MinIOConfig struct {
 }
 
 type minioStorageProvider struct {
-	client    *minio.Client
-	config    MinIOConfig
-	isMock    bool
-	mockStore map[string][]byte
+	client        *minio.Client
+	presignClient *minio.Client
+	config        MinIOConfig
+	isMock        bool
+	mockStore     map[string][]byte
 }
 
 // NewMinIOStorageProvider initializes a MinIO client and ensures the default bucket exists.
@@ -61,11 +63,23 @@ func NewMinIOStorageProvider(cfg MinIOConfig) (domain.StorageProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize minio client: %w", err)
 	}
+	presignClient := client
+	if cfg.PublicEndpoint = strings.TrimSpace(cfg.PublicEndpoint); cfg.PublicEndpoint != "" && cfg.PublicEndpoint != cfg.Endpoint {
+		presignClient, err = minio.New(cfg.PublicEndpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+			Secure: cfg.UseSSL,
+			Region: cfg.Region,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize public MinIO endpoint: %w", err)
+		}
+	}
 
 	p := &minioStorageProvider{
-		client:    client,
-		config:    cfg,
-		mockStore: make(map[string][]byte),
+		client:        client,
+		presignClient: presignClient,
+		config:        cfg,
+		mockStore:     make(map[string][]byte),
 	}
 
 	// Try initializing bucket if possible
@@ -123,7 +137,7 @@ func (p *minioStorageProvider) GeneratePresignedUploadURL(ctx context.Context, b
 		return fmt.Sprintf("http://localhost:9000/%s/%s?upload_session=mock", bucket, objectKey), nil
 	}
 
-	u, err := p.client.PresignedPutObject(ctx, bucket, objectKey, expiry)
+	u, err := p.presignClient.PresignedPutObject(ctx, bucket, objectKey, expiry)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned upload url: %w", err)
 	}
@@ -143,7 +157,7 @@ func (p *minioStorageProvider) GeneratePresignedGetURL(ctx context.Context, buck
 	}
 
 	reqParams := make(url.Values)
-	u, err := p.client.PresignedGetObject(ctx, bucket, objectKey, expiry, reqParams)
+	u, err := p.presignClient.PresignedGetObject(ctx, bucket, objectKey, expiry, reqParams)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned get url: %w", err)
 	}
